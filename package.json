@@ -1,0 +1,21 @@
+{
+  "name": "ai-tools-os",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Tools OS — a unified, local-first command center for managing AI development resources (skills, MCP servers, memory, config, subagents, commands, external tools).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "sync": "node scripts/sync-mcp.mjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}

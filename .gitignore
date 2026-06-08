@@ -1,0 +1,8 @@
+node_modules
+dist
+*.local
+.DS_Store
+.vite
+design_src
+logs
+.playwright-mcp
