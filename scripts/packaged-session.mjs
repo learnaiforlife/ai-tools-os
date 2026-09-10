@@ -31,14 +31,21 @@ export async function packagedSession({ exe, home, userData, cwd }) {
   };
   try {
     let url;
-    const end = Date.now() + 30000;
+    const end = Date.now() + 45000;
     while (Date.now() < end && !url) {
       if (startupError) throw startupError;
       if (ended) throw Error('Packaged process exited before startup: ' + output);
       const match = output.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
       if (match) {
-        const pages = await fetch(`http://127.0.0.1:${match[1]}/json/list`, { signal: AbortSignal.timeout(2000) }).then(r => r.json());
-        url = pages.find(p => p.type === 'page' && p.url.startsWith('aios://app/'))?.webSocketDebuggerUrl;
+        try {
+          const pages = await fetch(`http://127.0.0.1:${match[1]}/json/list`, { signal: AbortSignal.timeout(5000) }).then(r => r.json());
+          url = pages.find(p => p.type === 'page' && p.url.startsWith('aios://app/'))?.webSocketDebuggerUrl;
+        } catch (error) {
+          // A cold process (especially under Rosetta) may announce the port
+          // before its page listing responds. Poll the same live process until
+          // the overall deadline; an observation timeout is not process exit.
+          if (ended || startupError || Date.now() >= end) throw error;
+        }
       }
       if (!url) await pause(80);
     }
