@@ -98,7 +98,7 @@ test('legacy import refuses to reassign original sources to custom Claude paths'
   }
   const f = fixture(t);
   f.put('.aios/disabled-commands/old.md', 'Legacy command');
-  f.call('preferences.save', { preferences: { providerPaths: { claude: join(f.home, 'Custom Claude') } } });
+  f.call('preferences.save', { preferences: { ...f.call('inventory').preferences, providerPaths: { claude: join(f.home, 'Custom Claude') } } });
   const state = fs.readFileSync(join(f.home, '.aios/state-v2.json'), 'utf8');
   assert.equal(f.service.request('legacy.import').code, 'LEGACY_PATH_MISMATCH');
   assert.equal(fs.readFileSync(join(f.home, '.aios/state-v2.json'), 'utf8'), state);
