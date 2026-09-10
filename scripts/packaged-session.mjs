@@ -11,8 +11,10 @@ async function deadline(promise, ms, message) {
 // Test-only CDP session, using an ephemeral loopback port and disposable HOME.
 // The caller must verify the returned provider paths before any mutation.
 export async function packagedSession({ exe, home, userData, cwd }) {
+  const env = { ...process.env, HOME: home };
+  for (const key of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'AIOS_DEV_SERVER_URL', 'ELECTRON_RUN_AS_NODE']) delete env[key];
   const child = spawn(exe, [`--user-data-dir=${userData}`, '--remote-debugging-port=0', '--disable-gpu'], {
-    env: { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: join(home, '.claude'), CODEX_HOME: join(home, '.codex') },
+    env,
     cwd, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '', socket, ended = false, startupError, serial = 0;
@@ -73,7 +75,7 @@ export async function packagedSession({ exe, home, userData, cwd }) {
       await pause(100);
     }
     if (!inventory?.ok) throw Error('Packaged inventory failed: ' + JSON.stringify(inventory));
-    if (inventory.providerPaths.claude !== join(home, '.claude') || inventory.providerPaths.codex !== join(home, '.codex')) throw Error('Packaged fixture isolation failed; mutations are forbidden.');
+    if (inventory.providerPaths.claude !== join(home, '.claude') || inventory.providerPaths.codex !== join(home, '.codex') || inventory.providerPaths.claudeJson !== join(home, '.claude.json')) throw Error('Packaged fixture isolation failed; mutations are forbidden.');
     return { inventory, evaluate, close, request: (op, args = {}) => evaluate(`window.aios.request(${JSON.stringify(op)},${JSON.stringify(args)})`) };
   } catch (error) { await close(); throw error; }
 }

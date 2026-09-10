@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Storage, exists, canonical, inside, readText, fail, hash, MAX_BYTES } from './storage.mjs';
-import { discover, DEFAULT_PREFS, providerPaths } from './discovery.mjs';
+import { discover, DEFAULT_PREFS, providerPaths, resourceId } from './discovery.mjs';
 import { validate, parseConfig, jsonText, validateMcp, mcpEnabledToml, appendMcpToml, editJson, jsonValueText } from './formats.mjs';
 
 const INITIAL = { version: 2, roots: null, preferences: DEFAULT_PREFS, parked: {}, profiles: [], prompts: [], activeProfile: null };
@@ -299,8 +299,16 @@ export function createService(options = {}) {
       const dirs = providerPaths(home, env, state.preferences), moves = [];
       const mcps = store.state('disabled-mcp.json', {});
       if (!object(mcps)) fail('STATE_CORRUPT', 'Legacy MCP state is invalid.');
+      const legacyClaude = join(home, '.claude'), legacyJson = join(home, '.claude.json');
+      const legacyFiles = ['skills', 'commands', 'agents'].some(kind => {
+        const root = store.privatePath('disabled-' + kind);
+        return exists(root) && fs.readdirSync(root, { withFileTypes: true }).some(entry => kind === 'skills' ? entry.isDirectory() : entry.isFile() && entry.name.endsWith('.md'));
+      });
+      if (Object.keys(mcps).length && canonical(dirs.claudeJson) !== canonical(legacyJson) || legacyFiles && canonical(dirs.claude) !== canonical(legacyClaude)) {
+        fail('LEGACY_PATH_MISMATCH', 'Legacy data belongs to the original ~/.claude and ~/.claude.json sources. Restore the default Claude paths in Settings (and remove CLAUDE_CONFIG_DIR if set) before importing. No legacy data or native configuration was changed.');
+      }
       for (const [name, config] of Object.entries(mcps)) {
-        const key = ['mcpServers', name], id = hash(JSON.stringify(['Claude Code', 'mcp', dirs.claudeJson, key]));
+        const key = ['mcpServers', name], id = resourceId('Claude Code', 'mcp', dirs.claudeJson, key);
         if (!state.parked[id]) state.parked[id] = { config, resource: { id, kind: 'mcp', name, path: dirs.claudeJson, canonicalPath: canonical(dirs.claudeJson), provider: 'Claude Code', scope: 'user', project: null, key, enabled: false } };
       }
       for (const kind of ['skills', 'commands', 'agents']) {
@@ -308,7 +316,7 @@ export function createService(options = {}) {
         for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
           if (kind === 'skills' ? !entry.isDirectory() : !entry.isFile() || !entry.name.endsWith('.md')) continue;
           const path = join(dirs.claude, kind, entry.name, ...(kind === 'skills' ? ['SKILL.md'] : []));
-          const id = hash(JSON.stringify(['Claude Code', kind, path, []]));
+          const id = resourceId('Claude Code', kind, path);
           if (state.parked[id]) continue;
           const original = kind === 'skills' ? dirname(path) : path;
           state.parked[id] = { original, parkPath: join(root, entry.name), resource: { id, kind, name: entry.name, path, canonicalPath: canonical(path), provider: 'Claude Code', scope: 'user', project: null, enabled: false } };

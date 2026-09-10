@@ -83,6 +83,37 @@ test('legacy disabled records import without guessing project provenance', t => 
   assert.equal(fs.readFileSync(join(f.home, '.claude/commands/old.md'), 'utf8'), 'Legacy command');
   assert.ok(fs.existsSync(join(f.home, '.aios/disabled-mcp.json')));
 });
+test('legacy import refuses to reassign original sources to custom Claude paths', t => {
+  for (const override of ['.claude', 'Custom Claude']) {
+    const f = fixture(t);
+    const legacy = f.put('.aios/disabled-mcp.json', '{"legacy":{"command":"old"}}');
+    f.put('.aios/disabled-commands/old.md', 'Legacy command');
+    const custom = f.put(override + '/.claude.json', '{"mcpServers":{"keep":{"command":"new"}}}');
+    const service = createService({ home: f.home, env: { CLAUDE_CONFIG_DIR: join(f.home, override) }, managedRoots: [] });
+    const before = [legacy, custom].map(path => fs.readFileSync(path, 'utf8'));
+    assert.equal(service.request('legacy.import').code, 'LEGACY_PATH_MISMATCH');
+    assert.deepEqual([legacy, custom].map(path => fs.readFileSync(path, 'utf8')), before);
+    assert.equal(fs.existsSync(join(f.home, '.aios/state-v2.json')), false);
+    assert.equal(fs.existsSync(join(f.home, '.claude/commands/old.md')), false);
+  }
+  const f = fixture(t);
+  f.put('.aios/disabled-commands/old.md', 'Legacy command');
+  f.call('preferences.save', { preferences: { providerPaths: { claude: join(f.home, 'Custom Claude') } } });
+  const state = fs.readFileSync(join(f.home, '.aios/state-v2.json'), 'utf8');
+  assert.equal(f.service.request('legacy.import').code, 'LEGACY_PATH_MISMATCH');
+  assert.equal(fs.readFileSync(join(f.home, '.aios/state-v2.json'), 'utf8'), state);
+});
+test('legacy MCP identity remains stable after restoring through an authorized file link', t => {
+  const f = fixture(t), native = f.put('.claude/native.json', '{"mcpServers":{}}');
+  fs.symlinkSync(native, join(f.home, '.claude.json'));
+  f.put('.aios/disabled-mcp.json', '{"legacy":{"command":"old"}}');
+  const parked = f.call('legacy.import').resources.find(r => r.parked);
+  const restored = f.call('resource.toggle', { id: parked.id, parked: true, revision: parked.revision, enabled: true });
+  const live = restored.resources.find(r => r.kind === 'mcp');
+  assert.equal(live.id, parked.id);
+  assert.equal(JSON.parse(fs.readFileSync(native, 'utf8')).mcpServers.legacy.command, 'old');
+  assert.ok(fs.lstatSync(join(f.home, '.claude.json')).isSymbolicLink());
+});
 test('export redacts credential fields and preserves argument array structure', () => {
   const result = redactConfig({ command: 'npx', args: ['a b', '--token=private'], url: 'https://user:pass@example.test/mcp?token=private', env: { TOKEN: 'secret' }, headers: { Authorization: 'Bearer private' }, nested: { api_key: 'private' } });
   assert.equal(JSON.stringify(result).includes('private'), false); assert.equal(result.args.length, 2); assert.equal(result.url, 'https://example.test/mcp');
