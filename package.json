@@ -1,21 +1,83 @@
 {
   "name": "ai-tools-os",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "AI Tools OS — a unified, local-first command center for managing AI development resources (skills, MCP servers, memory, config, subagents, commands, external tools).",
   "type": "module",
+  "main": "electron/main.mjs",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/electron-dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "electron:dev": "node scripts/electron-dev.mjs",
+    "electron:start": "npm run build && electron .",
+    "dist:mac": "node scripts/release.mjs",
+    "dist:mac:local": "npm run build && electron-builder --mac --arm64 --x64 --publish never --config.mac.identity=null --config.directories.output=release-local && node scripts/release-metadata.mjs release-local",
+    "test": "node --test tests/*.test.mjs",
+    "test:desktop": "npm run build && electron tests/desktop.mjs",
+    "lint": "eslint .",
+    "check": "npm run lint && npm run test && npm run build && npm run site:build",
+    "site:dev": "npm --prefix site run dev",
+    "site:build": "npm --prefix site run build",
+    "site:preview": "npm --prefix site run preview",
     "build": "vite build",
     "preview": "vite preview",
-    "sync": "node scripts/sync-mcp.mjs"
+    "sync": "echo \"Use the desktop app Sync button or Settings > Scopes & paths > Force sync.\""
   },
   "dependencies": {
+    "@ltd/j-toml": "^1.38.0",
+    "jsonc-parser": "^3.3.1",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "toml-eslint-parser": "^1.0.3",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11"
+    "@electron/asar": "^3.4.1",
+    "@electron/notarize": "^2.5.0",
+    "@eslint/js": "^10.0.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
+    "eslint": "^10.10.0",
+    "globals": "^16.5.0",
+    "vite": "^8.2.2"
+  },
+  "build": {
+    "appId": "com.aios.app",
+    "productName": "AI Tools OS",
+    "artifactName": "AI-Tools-OS-${version}-${arch}.${ext}",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "scripts/lib/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "minimumSystemVersion": "13.0",
+      "hardenedRuntime": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "directories": {
+      "output": "release"
+    }
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
   }
 }

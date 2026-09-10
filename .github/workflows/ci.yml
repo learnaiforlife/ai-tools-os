@@ -1,0 +1,30 @@
+name: Validate AIOS
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix site ci
+      - run: npm run check
+      - run: npm run test:desktop
+      - run: npm audit --audit-level=moderate
+      - run: npm --prefix site audit --audit-level=moderate
+      - run: npm run dist:mac:local
+      - run: node scripts/test-package.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-test-results-${{ matrix.runner }}
+          path: test-results/

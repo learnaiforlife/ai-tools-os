@@ -1,5 +1,10 @@
 node_modules
 dist
+release
+release-local
+test-results
+site/public/downloads/*.dmg
+site/public/downloads/*.zip
 *.local
 .DS_Store
 .vite
