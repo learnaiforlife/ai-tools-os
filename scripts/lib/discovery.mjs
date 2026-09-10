@@ -77,7 +77,8 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
       if (known.has(dedupe)) return;
       known.set(dedupe, item); resources.push(item);
       if (project) projects.add(project);
-      if (['skills', 'commands', 'agents', 'memory'].includes(kind)) {
+      if (kind === 'memory' && !path.endsWith('.mdc')) item.syntax = 'plain-text';
+      if (['skills', 'commands', 'agents', 'memory'].includes(kind) && (kind !== 'memory' || path.endsWith('.mdc'))) {
         try {
           const { metadata } = frontmatter(file.content);
           item.name = typeof metadata.name === 'string' ? metadata.name : kind === 'skills' ? basename(dirname(path)) : basename(path);

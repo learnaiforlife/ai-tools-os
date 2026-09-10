@@ -221,7 +221,7 @@ export function createService(options = {}) {
       const parked = r.parked ? state.parked[r.id] : null;
       const path = parked ? r.kind === 'skills' ? join(parked.parkPath, 'SKILL.md') : parked.parkPath : r.canonicalPath;
       if (typeof args.content !== 'string') fail('INVALID', 'Content must be text.');
-      validate(args.content, r.path);
+      validate(args.content, r.path, r.kind);
       store.commit(`Save ${r.name}`, [{ path: canonical(path), content: args.content, revision: args.revision }]);
       return scan(state);
     }
@@ -240,7 +240,7 @@ export function createService(options = {}) {
       const path = destination(args, state);
       if (exists(path)) fail('CONFLICT', 'A resource already exists at this destination.');
       if (typeof args.content !== 'string') fail('INVALID', 'Provide resource content.');
-      validate(args.content, path); store.commit(`Create ${args.kind}`, [{ path, content: args.content, revision: null }]); return scan(state);
+      validate(args.content, path, args.kind); store.commit(`Create ${args.kind}`, [{ path, content: args.content, revision: null }]); return scan(state);
     }
     if (operation === 'mcp.create') {
       const path = destination({ ...args, kind: 'mcp' }, state), name = nameSafe(args.name); validateMcp(args.config);

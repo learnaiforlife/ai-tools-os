@@ -50,7 +50,7 @@ function Editor({ resource, run, close, openSource, initialDraft }) {
       </div>
       {diff ? <div className="wb-diff"><section><h3>Loaded version</h3><pre>{file.content}</pre></section><section><h3>Your draft</h3><pre>{draft}</pre></section></div>
         : <textarea className="wb-editor" aria-label="File content" spellCheck={false} value={draft} disabled={saving} readOnly={file.readonly} onChange={e => setDraft(e.target.value)} />}
-      <p className="wb-muted">The full file, including frontmatter, is preserved. JSON, TOML and YAML frontmatter are syntax checked on save. Provider semantics remain the provider’s responsibility.</p>
+      <p className="wb-muted">The full file is preserved. JSON, TOML and resource frontmatter are syntax checked on save; plain instruction Markdown is saved as text. Provider semantics remain the provider’s responsibility.</p>
       <div className="wb-actions">
         {!file.readonly && <Button primary disabled={!dirty || saving} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</Button>}
         {resource.sourceId && <Button disabled={saving} onClick={() => openSource(resource.sourceId)}>Edit native source</Button>}

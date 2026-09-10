@@ -161,6 +161,23 @@ test('context estimates count shared files once and omit unreadable sources', ()
   const result = contextEstimate([{ ...base, provider: 'Codex' }, { ...base, provider: 'Cursor' }, { ...base, canonicalPath: '/fixture/broken.md', error: 'unreadable' }]);
   assert.equal(result.tokens, 100); assert.equal(result.files.length, 1);
 });
+test('plain instruction Markdown is not rejected as malformed YAML metadata', t => {
+  const f = fixture(t), text = '---\n- Start with a plan\n---\nKeep edits small.\n';
+  f.put('Documents/p/AGENTS.md', text);
+  const inv = f.call(); assert.equal(inv.incomplete, false, JSON.stringify(inv.issues));
+  const r = inv.resources.find(r => r.provider === 'Codex' && r.kind === 'memory');
+  assert.equal(r.name, 'AGENTS.md');
+  f.call('resource.write', { id: r.id, revision: r.revision, content: text + 'Check the result.\n' });
+  assert.equal(fs.readFileSync(r.path, 'utf8'), text + 'Check the result.\n');
+  f.call('resource.create', { kind: 'memory', provider: 'Claude Code', scope: 'user', name: 'instructions', content: text });
+  assert.equal(fs.readFileSync(join(f.home, '.claude/CLAUDE.md'), 'utf8'), text);
+  const rulePath = f.put('Documents/p/.cursor/rules/rule.mdc', '---\nalwaysApply: true\n---\nNative rule.\n');
+  const rule = f.call().resources.find(r => r.path === rulePath);
+  assert.equal(f.service.request('resource.write', { id: rule.id, revision: rule.revision, content: text }).code, 'INVALID');
+  assert.equal(fs.readFileSync(rulePath, 'utf8'), '---\nalwaysApply: true\n---\nNative rule.\n');
+  assert.equal(f.service.request('resource.create', { kind: 'commands', provider: 'Claude Code', scope: 'user', name: 'command', content: text }).code, 'INVALID');
+  assert.equal(fs.existsSync(join(f.home, '.claude/commands/command.md')), false);
+});
 test('selected filesystem root includes absolute descendants without prefix confusion', () => {
   assert.equal(inside('/fixture/project', '/'), true);
   assert.equal(inside('relative', '/'), false);

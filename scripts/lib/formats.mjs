@@ -45,9 +45,9 @@ export function editJson(raw, path, value, valueText) {
   }
   jsonTree(result); return result;
 }
-export function validate(raw, path) {
+export function validate(raw, path, kind) {
   if (/\.(json|toml)$/.test(path)) parseConfig(raw, path);
-  else if (/\.(md|mdc)$/.test(path)) {
+  else if (/\.(md|mdc)$/.test(path) && (kind !== 'memory' || path.endsWith('.mdc'))) {
     try { frontmatter(raw); } catch { fail('INVALID', 'Invalid YAML frontmatter. Original file was preserved.'); }
   }
 }
