@@ -32,6 +32,8 @@ try {
     const actual = run('/usr/bin/lipo', ['-archs', join(app, 'Contents/MacOS/AI Tools OS')]);
     if (!actual.includes(arch === 'x64' ? 'x86_64' : arch)) throw Error(`Architecture mismatch for ${zip}.`);
     run('/usr/bin/xcrun', ['stapler', 'validate', join(directory, dmg)]);
+    run('/usr/bin/codesign', ['--verify', '--strict', '--verbose=2', join(directory, dmg)]);
+    run('/usr/sbin/spctl', ['--assess', '--type', 'open', '--context', 'context:primary-signature', '--verbose=2', join(directory, dmg)]);
     inspectDmg(join(directory, dmg), pkg, arch, inspected.asarSha512);
     for (const name of [zip, dmg]) {
       const bytes = fs.readFileSync(join(directory, name));
