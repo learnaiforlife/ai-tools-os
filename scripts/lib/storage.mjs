@@ -140,7 +140,8 @@ export class Storage {
       if (canonical(w.path) !== w.path) fail('CONFLICT', 'A destination changed to a symbolic link. Refresh before trying again.');
       const before = exists(w.path) ? readText(w.path) : null;
       if (w.revision === undefined || w.revision !== (before?.revision ?? null)) fail('CONFLICT', `File changed on disk: ${w.path}. Reload and review your draft before saving.`);
-      return { ...w, before, after: hash(w.content), mode: before?.mode ?? w.mode ?? 0o600 };
+      if (w.mode !== undefined && (!Number.isInteger(w.mode) || w.mode < 0 || w.mode > 0o777)) fail('INVALID', 'Invalid requested file permissions.');
+      return { ...w, before, after: hash(w.content), mode: w.mode ?? before?.mode ?? 0o600 };
     });
     for (const m of moves) {
       if (!exists(m.from)) fail('CONFLICT', 'The source no longer exists. Refresh the inventory.');

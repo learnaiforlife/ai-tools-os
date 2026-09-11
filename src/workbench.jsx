@@ -3,7 +3,7 @@ import { Icon } from './icons.jsx';
 import { request, copyText, redactJsonText, contextEstimate } from './api.js';
 import './workbench.css';
 
-const PAGES = [['dashboard', 'Overview', 'grid'], ['skills', 'Skills', 'bolt'], ['mcp', 'MCP servers', 'server'], ['memory', 'Memory & rules', 'brain'], ['config', 'Config files', 'file'], ['commands', 'Commands', 'terminal'], ['agents', 'Subagents', 'users'], ['prompts', 'Prompt library', 'message'], ['security', 'Security review', 'shield'], ['tokens', 'Context estimates', 'chart'], ['tools', 'External tools', 'box'], ['history', 'History & recovery', 'history'], ['tutorial', 'Getting started', 'book'], ['settings', 'Settings', 'settings']];
+const PAGES = [['dashboard', 'Overview', 'grid'], ['skills', 'Skills', 'bolt'], ['mcp', 'MCP servers', 'mcp'], ['memory', 'Memory & rules', 'memory'], ['config', 'Config files', 'file'], ['commands', 'Commands', 'terminal'], ['agents', 'Subagents', 'users'], ['prompts', 'Prompt library', 'bookmark'], ['security', 'Security review', 'shield'], ['tokens', 'Context estimates', 'tokens'], ['tools', 'External tools', 'tools'], ['history', 'History & recovery', 'history'], ['tutorial', 'Getting started', 'book'], ['settings', 'Settings', 'settings']];
 const KINDS = ['skills', 'mcp', 'memory', 'config', 'commands', 'agents'];
 const EMPTY = { resources: [], roots: [], projects: [], issues: [], profiles: [], prompts: [], preferences: { theme: 'dark', syncInterval: 0, exclusions: [], providerPaths: {} } };
 const pretty = value => JSON.stringify(value, null, 2);
@@ -147,7 +147,7 @@ function History({ data, busy, report, edit }) {
     </section>)}
     {preview && <Dialog title="Previous version" close={() => setPreview(null)} wide><p className="wb-path">{preview.path}</p><textarea className="wb-editor" aria-label="Previous file content" readOnly value={preview.content} />
       {previewError && <Notice error>{previewError}</Notice>}
-      {!restoreTarget && <Notice>Draft restoration requires a writable live resource in the inventory. Application-state backups are available for inspection; parked resources must be restored from their inventory page first.</Notice>}
+      {!restoreTarget && <Notice>Draft restoration requires a writable live resource in the inventory. Add the original folder to your scan or restore the parked resource from its inventory page first.</Notice>}
       <Button onClick={async () => { try { await copyText(preview.content); } catch (e) { setPreviewError(e.message); } }}>Copy previous content</Button>
       <Button disabled={!restoreTarget} onClick={() => { setPreview(null); edit(restoreTarget, preview.content); }}>Restore as a draft for review</Button>
     </Dialog>}

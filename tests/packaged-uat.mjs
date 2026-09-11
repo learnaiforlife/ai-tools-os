@@ -156,12 +156,12 @@ export async function runPackagedUat({ session, home, results, output }) {
     assert.ok(!(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Copy rendered prompt').disabled"))); await close();
     await button('Delete prompt'); await idle(); assert.ok((await mainText()).includes('library is empty'));
   });
-  await step('history distinguishes application-state inspection from native file restoration', async () => {
-    await nav('History & recovery'); await wait("!!document.querySelector('main .wb-row button')");
-    await button('Inspect previous version'); await content();
-    assert.ok(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Restore as a draft for review').disabled")); await close();
+  await step('history distinguishes unavailable sources from restorable native files', async () => {
     const path=join(home,'.claude/settings.json');
-    await js(`(()=>{const row=[...document.querySelectorAll('main .wb-row')].find(r=>r.querySelector('code')?.textContent===${JSON.stringify(path)});row.querySelector('button').click()})()`); await content();
+    const inspectHistory = async () => { await wait("!!document.querySelector('main .wb-row button')"); await js(`(()=>{const row=[...document.querySelectorAll('main .wb-row')].find(r=>r.querySelector('code')?.textContent===${JSON.stringify(path)});row.querySelector('button').click()})()`); await content(); };
+    fs.renameSync(path,path+'.uat-away'); await sync(); await nav('History & recovery'); await inspectHistory();
+    assert.ok(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Restore as a draft for review').disabled")); await close();
+    fs.renameSync(path+'.uat-away',path); await sync(); await inspectHistory();
     await button('Restore as a draft for review'); await button('Reveal content'); await content();
     assert.ok((await js("document.querySelector('dialog textarea').value")).includes('uat-original'));
     assert.equal(JSON.parse(fs.readFileSync(path)).model,'uat-edited'); await close();

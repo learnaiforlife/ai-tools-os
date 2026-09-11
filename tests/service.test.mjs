@@ -173,6 +173,20 @@ test('statusline install validates both baselines before touching either file', 
   assert.equal(fs.readFileSync(script, 'utf8'), 'working'); assert.equal(fs.readFileSync(settings, 'utf8'), '{bad');
   fs.writeFileSync(settings, '{}'); const p2 = f.call('statusline.preview'); f.call('statusline.install', { settingsRevision: p2.settings.revision, scriptRevision: p2.script.revision });
   assert.ok(JSON.parse(fs.readFileSync(settings)).statusLine.command.includes('/bin/bash'));
+  assert.equal(fs.statSync(script).mode & 0o777, 0o700);
+  assert.equal(fs.statSync(settings).mode & 0o777, 0o600);
+});
+test('explicit transaction permissions apply, ordinary edits preserve modes, and rollback restores them', t => {
+  const f = fixture(t), path = f.put('permission-fixture.txt', 'before', 0o644), storage = new Storage(join(f.home,'.aios'));
+  storage.locked(() => storage.commit('ordinary edit', [{ path, content: 'ordinary', revision: hash('before') }]));
+  assert.equal(fs.statSync(path).mode & 0o777, 0o644);
+  storage.locked(() => storage.commit('explicit permissions', [{ path, content: 'explicit', revision: hash('ordinary'), mode: 0o700 }]));
+  assert.equal(fs.statSync(path).mode & 0o777, 0o700);
+  const failing = new Storage(join(f.home,'.aios'), { fault: () => { throw Error('injected failure'); } });
+  assert.throws(() => failing.locked(() => failing.commit('rollback permissions', [{ path, content: 'failed', revision: hash('explicit'), mode: 0o600 }])), /injected failure/);
+  assert.equal(fs.readFileSync(path,'utf8'),'explicit'); assert.equal(fs.statSync(path).mode & 0o777, 0o700);
+  assert.throws(() => storage.locked(() => storage.commit('invalid permissions', [{ path, content: 'invalid', revision: hash('explicit'), mode: 0o1777 }])), e => e.code === 'INVALID');
+  assert.equal(fs.readFileSync(path,'utf8'),'explicit');
 });
 test('generated statusline actually executes on macOS', { skip: process.platform !== 'darwin' }, () => {
   const dir = fs.mkdtempSync(join(tmpdir(), 'aios-status-')); const path = join(dir, 'status.sh');
