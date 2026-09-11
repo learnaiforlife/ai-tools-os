@@ -10,6 +10,7 @@ export function TransferDialog({ resource, data, run, close }) {
   const update = (key, value) => { setForm(f => ({ ...f, [key]: value, ...(key === 'provider' && value !== 'Claude Code' && f.scope === 'local' ? { scope: 'project' } : {}) })); setPreview(null); setReviewed(false); setError(''); };
   const operation = async apply => {
     setBusy(true); setError('');
+    if (!apply) { setPreview(null); setReviewed(false); }
     try {
       if (apply) { await run('transfer.apply', { ...form, previewRevision: preview.previewRevision }); close(); }
       else { setPreview(await request('transfer.preview', form)); setReviewed(false); }

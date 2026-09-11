@@ -229,7 +229,9 @@ export async function runPackagedUat({ session, home, results, output }) {
   const reviewTransfer = async () => {
     await button('Review transfer'); await wait("!!document.querySelector('dialog input[type=checkbox]')");
     assert.equal(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Apply transfer').disabled"), true);
-    await js("document.querySelector('dialog input[type=checkbox]').click()"); await button('Apply transfer'); await finish();
+    await js("document.querySelector('dialog input[type=checkbox]').click()");
+    await wait("[...document.querySelectorAll('dialog button')].some(b=>b.textContent==='Apply transfer'&&!b.disabled)");
+    await button('Apply transfer'); await finish();
   };
   await step('skill transfer preview copies supporting files and History undoes the transfer', async () => {
     await nav('Skills'); await rowButton('UAT skill', 'Copy / move');
@@ -237,6 +239,7 @@ export async function runPackagedUat({ session, home, results, output }) {
     await input('dialog .wb-form-grid input', 'uat-transferred');
     await session.viewport(720,520); await button('Review transfer'); await wait("!!document.querySelector('dialog input[type=checkbox]')");
     assert.ok(await js("document.documentElement.scrollWidth<=innerWidth && document.querySelector('dialog').getBoundingClientRect().right<=innerWidth"));
+    assert.ok(await js("document.querySelector('dialog').scrollWidth<=document.querySelector('dialog').clientWidth"), 'Transfer form must fit inside the dialog with long project paths');
     fs.writeFileSync(output.replace('.png','-transfer-small.png'),await session.screenshot()); await session.viewport(1440,960);
     await reviewTransfer();
     const path=join(project,'.cursor/skills/uat-transferred'); assert.equal(fs.readFileSync(join(path,'support.txt'),'utf8'),'Support file must survive parking');
