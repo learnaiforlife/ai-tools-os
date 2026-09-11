@@ -167,7 +167,7 @@ test('missing trigger registration is an error rather than a false negative', as
   const f = fixture(t), evaluator = createEvaluator({ home: f.home, env: {}, run: fakeRun(() => ({ stdout: JSON.stringify({ type: 'system', subtype: 'init', skills: [], mcp_servers: [] }) + '\n' + response('done').stdout, stderr: '' })) });
   const lab = createLab({ home: f.home, env: {}, service: f.service, evaluator });
   const r = await lab.request('trigger', { id: f.resource.id, suite: [{ query: 'test', should_trigger: false }], settings }); const j = await done(lab, r.job.id);
-  assert.equal(j.result.complete, false); assert.equal(j.result.summary.candidate.pass_rate.mean, null); assert.ok(j.result.samples.every(s => s.code === 'TRIGGER_SETUP'));
+  assert.equal(j.status, 'failed'); assert.equal(j.result.complete, false); assert.equal(j.result.summary.candidate.pass_rate.mean, null); assert.ok(j.result.samples.every(s => s.code === 'TRIGGER_SETUP')); assert.equal(j.result.samples.length, 1); assert.equal(j.result.cost, 0.01);
 });
 test('output-file assertions inspect saved bytes, and export detects later tampering', async t => {
   const f = fixture(t), evaluator = createEvaluator({ home: f.home, env: {}, run: fakeRun((_args, opts) => { fs.writeFileSync(join(opts.cwd, 'answer.txt'), 'Actual answer bytes'); return response('I created a file.'); }) });
@@ -204,6 +204,22 @@ test('a timeout stops further paid calls because unreported spend is unknown', a
   const evaluator = createEvaluator({ home: f.home, env: {}, run: fakeRun(() => { calls++; throw Object.assign(Error('timeout'), { code: 'TIMEOUT' }); }) });
   const lab = createLab({ home: f.home, env: {}, service: f.service, evaluator }); const r = await lab.request('evaluate', { id: f.resource.id, suite, settings: { ...settings, repeats: 5 } });
   assert.equal((await done(lab, r.job.id)).status, 'failed'); assert.equal(calls, 1);
+});
+test('blind judge failures stop spending and suppress incomplete improvement claims', async t => {
+  for (const code of ['TIMEOUT', 'AUTH_REQUIRED', 'ENGINE_RESPONSE']) {
+    const f = fixture(t); let calls = 0;
+    const evaluator = createEvaluator({ home: f.home, env: {}, run: fakeRun(args => {
+      calls++;
+      if (args.includes('--json-schema')) throw Object.assign(Error('Judge unavailable'), { code });
+      return response('CANDIDATE');
+    }) });
+    const lab = createLab({ home: f.home, env: {}, service: f.service, evaluator });
+    const r = await lab.request('evaluate', { id: f.resource.id, suite, settings: { ...settings, repeats: 3, blind: true } });
+    const j = await done(lab, r.job.id);
+    assert.equal(j.status, 'failed'); assert.equal(j.code, code); assert.equal(calls, 3);
+    assert.equal(j.result.samples.length, 2); assert.equal(j.result.complete, false); assert.equal(j.result.summary.delta, null);
+    assert.equal(j.result.comparisons[0].code, code); assert.equal(j.result.cost, 0.02);
+  }
 });
 test('job storage rejects a symlink before changing destination permissions', t => {
   const f = fixture(t), external = join(f.home, 'external'); fs.mkdirSync(external, { mode: 0o755 }); fs.symlinkSync(external, join(f.home, '.aios/lab'));

@@ -13,6 +13,7 @@ const objectSchema = properties => ({ type: 'object', properties, required: Obje
 const STRING = { type: 'string' };
 const GRADES = objectSchema({ expectations: { type: 'array', items: objectSchema({ text: STRING, passed: { type: 'boolean' }, evidence: STRING }) } });
 const COMPARE = objectSchema({ winner: { type: 'string', enum: ['A', 'B', 'TIE'] }, reasoning: STRING });
+const HALTING_ERRORS = new Set(['TIMEOUT', 'TOOL_FAILED', 'OUTPUT_LIMIT', 'AUTH_REQUIRED', 'BUDGET', 'TOOL_MISSING', 'TOOL_VERSION', 'ENGINE_FAILED', 'ENGINE_RESPONSE', 'TRIGGER_SETUP']);
 export const PROPOSAL = objectSchema({ content: STRING, rationale: STRING });
 export const REVIEW = objectSchema({ findings: { type: 'array', items: objectSchema({ path: STRING, line: { type: 'integer' }, message: STRING, suggestion: STRING }) }, summary: STRING });
 
@@ -100,14 +101,14 @@ export function createEvaluator({ home, env = process.env, run = runProcess }) {
     if (!result || result.type !== 'result') fail('ENGINE_RESPONSE', 'Claude did not return a completed result. No score was recorded.');
     if (result.result !== undefined && typeof result.result !== 'string') fail('ENGINE_RESPONSE', 'Claude returned an invalid answer type. No score was recorded.');
     if (result.is_error && /authenticat|OAuth|sign.?in|login|API key/i.test(String(result.result))) fail('AUTH_REQUIRED', 'Claude Code is not authenticated. Run claude auth login in Terminal, then retry this job.');
-    if (trigger) {
-      const init = events.find(e => e.type === 'system' && e.subtype === 'init');
-      if (!init?.skills?.includes('aios-evaluation:aios-evaluated-skill') || init.mcp_servers?.length || init.plugins?.some(p => p.name !== 'aios-evaluation')) fail('TRIGGER_SETUP', 'The isolated evaluation skill was not loaded cleanly. Update Claude Code; no trigger score was recorded.');
-    }
     const cost = Number.isFinite(result.total_cost_usd) && result.total_cost_usd >= 0 ? result.total_cost_usd : null;
     if (cost == null) fail('ENGINE_RESPONSE', 'Claude did not report usage cost. Stopping to preserve the spending limit.');
     budget.spent += cost; onCost?.(budget.spent);
     if (raw.exitCode || result.is_error || result.subtype && result.subtype !== 'success') fail('ENGINE_FAILED', `Claude could not complete the run (${result.subtype || 'error'}). ${String(result.result || result.errors?.join('; ') || 'Check authentication and model access.').slice(0, 700)}`);
+    if (trigger) {
+      const init = events.find(e => e.type === 'system' && e.subtype === 'init');
+      if (!init?.skills?.includes('aios-evaluation:aios-evaluated-skill') || init.mcp_servers?.length || init.plugins?.some(p => p.name !== 'aios-evaluation')) fail('TRIGGER_SETUP', 'The isolated evaluation skill was not loaded cleanly. Update Claude Code; no trigger score was recorded.');
+    }
     if (result.permission_denials?.length) fail('CAPABILITY', 'The task requested tools outside this evaluation mode. Command/MCP-dependent tasks cannot be scored by the text and file runner.');
     const usage = result.usage, tokens = usage ? ['input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens'].reduce((sum, key) => sum + (Number(usage[key]) || 0), 0) : null;
     if (schema && (!result.structured_output || typeof result.structured_output !== 'object')) fail('JUDGE_RESPONSE', 'The model did not return a structured assessment. No judgment was recorded.');
@@ -115,7 +116,13 @@ export function createEvaluator({ home, env = process.env, run = runProcess }) {
   }
 
   async function evaluate({ source, candidate, suite, mode, settings, directory, signal, progress, update, budget, prepare }) {
-    const samples = [], comparisons = [], summary = () => ({ samples, comparisons, summary: summarize(samples), cost: budget.spent });
+    const samples = [], comparisons = [], summary = () => {
+      const complete = samples.length === suite.length * settings.repeats * 2 && samples.every(s => s.status === 'completed') &&
+        (!settings.blind || mode === 'trigger' || comparisons.length === suite.length * settings.repeats && comparisons.every(c => !c.error));
+      const measured = summarize(samples);
+      if (!complete) measured.delta = null;
+      return { samples, comparisons, summary: measured, cost: budget.spent, complete };
+    };
     const engine = await check(signal);
     for (const test of suite) for (let repeat = 0; repeat < settings.repeats; repeat++) {
       const pair = {}, pairOrder = randomInt(2) ? ['baseline', 'candidate'] : ['candidate', 'baseline'];
@@ -164,7 +171,7 @@ export function createEvaluator({ home, env = process.env, run = runProcess }) {
           pair[variant] = row;
         } catch (error) {
           row = { ...row, status: 'error', error: error.message, code: error.code || 'ERROR' };
-          if (signal.aborted || ['TIMEOUT', 'TOOL_FAILED', 'OUTPUT_LIMIT', 'AUTH_REQUIRED', 'BUDGET', 'TOOL_MISSING', 'TOOL_VERSION', 'ENGINE_FAILED', 'ENGINE_RESPONSE'].includes(error.code)) { samples.push(row); update(summary()); throw error; }
+          if (signal.aborted || HALTING_ERRORS.has(error.code)) { samples.push(row); update(summary()); throw error; }
         }
         samples.push(row); update(summary());
       }
@@ -177,13 +184,12 @@ export function createEvaluator({ home, env = process.env, run = runProcess }) {
           const { winner, reasoning } = comparison.structured;
           if (!['A', 'B', 'TIE'].includes(winner) || typeof reasoning !== 'string') fail('JUDGE_RESPONSE', 'Invalid blind comparison response.');
           comparisons.push({ testId: test.id, repeat, winner: winner === 'TIE' ? 'tie' : winner === 'A' ? a : b, reasoning });
-        } catch (error) { comparisons.push({ testId: test.id, repeat, error: error.message }); if (signal.aborted) throw error; }
+        } catch (error) { comparisons.push({ testId: test.id, repeat, error: error.message, code: error.code || 'ERROR' }); if (signal.aborted || HALTING_ERRORS.has(error.code)) { update(summary()); throw error; } }
         update(summary());
       }
     }
     const result = { ...summary(), engine: engine.version, suiteHash: hash(JSON.stringify(suite)), settings };
     result.holdout = summarize(samples.filter(s => s.holdout));
-    result.complete = samples.every(s => s.status === 'completed') && !comparisons.some(c => c.error);
     return result;
   }
   return { check, call, evaluate };
