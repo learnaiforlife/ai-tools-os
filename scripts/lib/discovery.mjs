@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import { basename, dirname, join, resolve, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { canonical, exists, inside, readText, hash, fail } from './storage.mjs';
-import { frontmatter, parseConfig, validateMcp } from './formats.mjs';
+import { frontmatter, parseConfig, validateMcp, validate } from './formats.mjs';
 import { PROVIDERS } from './providers.mjs';
 
 export const resourceId = (provider, kind, path, key = []) => hash(JSON.stringify([provider, kind, canonical(path), key]));
@@ -80,7 +80,8 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
       if (kind === 'memory' && !path.endsWith('.mdc')) item.syntax = 'plain-text';
       if (['skills', 'commands', 'agents', 'memory'].includes(kind) && (kind !== 'memory' || path.endsWith('.mdc'))) {
         try {
-          const { metadata } = frontmatter(file.content);
+          if (kind === 'agents' && path.endsWith('.toml')) validate(file.content, path, kind);
+          const metadata = kind === 'agents' && path.endsWith('.toml') ? parseConfig(file.content, path) : frontmatter(file.content).metadata;
           item.name = typeof metadata.name === 'string' ? metadata.name : kind === 'skills' ? basename(dirname(path)) : basename(path);
           item.description = typeof metadata.description === 'string' ? metadata.description : '';
           item.syntax = 'parsed';
@@ -89,6 +90,18 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
       if (kind === 'config') {
         try {
           const obj = parseConfig(file.content, path); item.syntax = 'parsed';
+          const pluginEntries = provider === 'Claude Code' ? obj.enabledPlugins : provider === 'Codex' ? obj.plugins : undefined;
+          if (pluginEntries !== undefined) {
+            if (!pluginEntries || typeof pluginEntries !== 'object' || Array.isArray(pluginEntries)) issue(path, 'Plugin configuration must be an object.', 'PARSE_ERROR');
+            else for (const [name, config] of Object.entries(pluginEntries)) {
+              const key = [provider === 'Claude Code' ? 'enabledPlugins' : 'plugins', name];
+              if (provider === 'Claude Code' ? typeof config !== 'boolean' : !config || typeof config !== 'object' || Array.isArray(config) || config.enabled !== undefined && typeof config.enabled !== 'boolean') { issue(path, 'Invalid plugin configuration entry.', 'PARSE_ERROR'); continue; }
+              resources.push({ ...item, id: resourceId(provider, 'plugins', path, key), sourceId: item.id, kind: 'plugins', key, name,
+                enabled: provider === 'Claude Code' ? config : config.enabled !== false,
+                nativeScope: project && path.endsWith('settings.local.json') ? 'local' : scope,
+                description: 'Native plugin configuration reference. Installation, dependencies and workspace policy are managed by the provider.' });
+            }
+          }
           const groups = extras.mcp ? [{ key: [extras.mcp], obj: obj[extras.mcp], project }] : [];
           if (path === dirs.claudeJson) for (const [projectPath, config] of Object.entries(obj.projects || {})) {
             if (isAbsolute(projectPath)) groups.push({ key: ['projects', projectPath, 'mcpServers'], obj: config?.mcpServers, project: projectPath });
@@ -102,10 +115,13 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
               const key = [...group.key, name];
               const server = { ...item, id: resourceId(provider, 'mcp', path, key), kind: 'mcp', sourceId: item.id, name, key,
                 project: group.project, scope: extras.managed ? 'managed' : group.project ? 'project' : scope,
+                nativeScope: extras.managed ? 'managed' : group.project ? path === dirs.claudeJson ? 'local' : 'project' : 'user',
                 enabled: provider === 'Codex' ? cfg.enabled !== false : true, transport: cfg.url ? 'http' : 'stdio',
                 hasSecrets: !!(cfg.env && Object.keys(cfg.env).length || cfg.headers && Object.keys(cfg.headers).length || cfg.http_headers && Object.keys(cfg.http_headers).length || cfg.env_http_headers && Object.keys(cfg.env_http_headers).length || cfg.bearer_token || cfg.bearer_token_env_var),
                 runtime: 'unknown', estimatedTokens: null, description: 'Native configuration; runtime connection is not monitored.' };
-              try { validateMcp(cfg); } catch (e) { server.error = e.message; issue(path, `MCP ${name}: ${e.message}`, 'MCP_INVALID'); }
+              if (provider === 'Codex' && project && !cfg.command && !cfg.url && typeof cfg.enabled === 'boolean') {
+                server.overrideOnly = true; server.transport = 'inherited'; server.description = 'Project enable/disable override; transport is inherited from lower config layers.';
+              } else try { validateMcp(cfg); } catch (e) { server.error = e.message; issue(path, `MCP ${name}: ${e.message}`, 'MCP_INVALID'); }
               resources.push(server);
             }
           }
@@ -122,7 +138,7 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
       if (depth > 16) { incomplete = true; issue(root, 'Depth limit reached; add this folder as a scan root.', 'SCAN_LIMIT'); return; }
       for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
         check(root);
-        if (SKIP.has(entry.name) || prefs.exclusions?.includes(entry.name)) continue;
+        if (SKIP.has(entry.name) || entry.name.startsWith('.aios-transfer-') || prefs.exclusions?.includes(entry.name)) continue;
         const path = join(root, entry.name);
         attempt(path, () => {
           const st = entry.isSymbolicLink() ? fs.statSync(path) : entry;
@@ -141,9 +157,12 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
       files(join(base, 'agents'), p => { if (p.endsWith('.md')) add(p, 'agents', name, project); });
     } else if (!skillsOnly && name === 'Codex') {
       add(join(base, 'config.toml'), 'config', name, project, { mcp: 'mcp_servers' });
+      files(join(base, 'agents'), p => { if (p.endsWith('.toml')) add(p, 'agents', name, project); });
       for (const file of ['AGENTS.md', 'AGENTS.override.md']) add(join(base, file), 'memory', name, project);
     } else if (!skillsOnly && name === 'Cursor') {
       add(join(base, 'mcp.json'), 'config', name, project, { mcp: 'mcpServers' });
+      files(join(base, 'agents'), p => { if (p.endsWith('.md')) add(p, 'agents', name, project); });
+      files(join(base, 'commands'), p => { if (p.endsWith('.md')) add(p, 'commands', name, project); });
       if (project) files(join(base, 'rules'), p => { if (p.endsWith('.mdc')) add(p, 'memory', name, project); });
     }
     // Native skill roots only: do not traverse cache, template or plugin folders.
@@ -191,7 +210,7 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
           // entry. Stream enumeration instead of retaining enormous listings.
           check(root, entry.isDirectory() || entry.isSymbolicLink() ? 1 : 0);
           if (MARKERS.has(entry.name)) project(root);
-          if (SKIP.has(entry.name) || PROVIDER_DIRS.has(entry.name) || prefs.exclusions?.includes(entry.name)) continue;
+          if (SKIP.has(entry.name) || entry.name.startsWith('.aios-transfer-') || PROVIDER_DIRS.has(entry.name) || prefs.exclusions?.includes(entry.name)) continue;
           const path = join(root, entry.name);
           attempt(path, () => {
             if (entry.isDirectory() || entry.isSymbolicLink() && fs.statSync(path).isDirectory()) index(path, depth + 1);

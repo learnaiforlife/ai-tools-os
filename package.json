@@ -1,6 +1,6 @@
 {
   "name": "ai-tools-os",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "private": true,
   "description": "AI Tools OS — a unified, local-first command center for managing AI development resources (skills, MCP servers, memory, config, subagents, commands, external tools).",
   "type": "module",

@@ -1,24 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Icon } from './icons.jsx';
 import { request, copyText, redactJsonText, contextEstimate } from './api.js';
+import { Button, Notice, Field, Dialog } from './workbench-ui.jsx';
+import { TransferDialog, McpBatchDialog, McpProjectDialog } from './resource-actions.jsx';
 import './workbench.css';
 
-const PAGES = [['dashboard', 'Overview', 'grid'], ['skills', 'Skills', 'bolt'], ['mcp', 'MCP servers', 'mcp'], ['memory', 'Memory & rules', 'memory'], ['config', 'Config files', 'file'], ['commands', 'Commands', 'terminal'], ['agents', 'Subagents', 'users'], ['prompts', 'Prompt library', 'bookmark'], ['security', 'Security review', 'shield'], ['tokens', 'Context estimates', 'tokens'], ['tools', 'External tools', 'tools'], ['history', 'History & recovery', 'history'], ['tutorial', 'Getting started', 'book'], ['settings', 'Settings', 'settings']];
-const KINDS = ['skills', 'mcp', 'memory', 'config', 'commands', 'agents'];
+const PAGES = [['dashboard', 'Overview', 'grid'], ['skills', 'Skills', 'bolt'], ['mcp', 'MCP servers', 'mcp'], ['plugins', 'Plugins', 'grid'], ['memory', 'Memory & rules', 'memory'], ['config', 'Config files', 'file'], ['commands', 'Commands', 'terminal'], ['agents', 'Subagents', 'users'], ['prompts', 'Prompt library', 'bookmark'], ['security', 'Security review', 'shield'], ['tokens', 'Context estimates', 'tokens'], ['tools', 'External tools', 'tools'], ['history', 'History & recovery', 'history'], ['tutorial', 'Getting started', 'book'], ['settings', 'Settings', 'settings']];
+const KINDS = ['skills', 'mcp', 'plugins', 'memory', 'config', 'commands', 'agents'];
 const EMPTY = { resources: [], roots: [], projects: [], issues: [], profiles: [], prompts: [], preferences: { theme: 'dark', syncInterval: 0, exclusions: [], providerPaths: {} } };
 const pretty = value => JSON.stringify(value, null, 2);
-function Button({ children, primary, ...props }) { return <button className={'wb-button' + (primary ? ' primary' : '')} type="button" {...props}>{children}</button>; }
-function Notice({ children, error = false }) { return <div className={'wb-notice' + (error ? ' error' : '')} role={error ? 'alert' : 'status'}>{children}</div>; }
-function Field({ label, children }) { return <label className="wb-field"><span>{label}</span>{children}</label>; }
-function Dialog({ title, close, children, wide = false }) {
-  const ref = useRef(null), closeRef = useRef(close); closeRef.current = close;
-  useEffect(() => {
-    const previous = document.activeElement, el = ref.current; el.showModal();
-    const cancel = event => { event.preventDefault(); closeRef.current(); }; el.addEventListener('cancel', cancel);
-    return () => { el.removeEventListener('cancel', cancel); el.close(); previous?.focus?.(); };
-  }, []);
-  return <dialog className={'wb-dialog' + (wide ? ' wide' : '')} ref={ref} aria-labelledby="dialog-title"><header><h2 id="dialog-title">{title}</h2><Button aria-label="Close dialog" onClick={close}>Close</Button></header>{children}</dialog>;
-}
 function useDraftGuard(dirty) {
   useEffect(() => { if (!dirty) return; const guard = e => { e.preventDefault(); e.returnValue = ''; }; window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard); }, [dirty]);
 }
@@ -72,12 +62,12 @@ function CreateResource({ kind, data, scope, project, run, close }) {
   };
   return <Dialog title={`New ${kind === 'mcp' ? 'MCP server' : kind}`} close={leave} wide><form onSubmit={submit}>
     <div className="wb-form-grid"><Field label="Name"><input required value={form.name} onChange={e => update('name', e.target.value)} maxLength={100} /></Field>
-      <Field label="Provider"><select value={form.provider} onChange={e => update('provider', e.target.value)}>{(['commands', 'agents'].includes(kind) ? ['Claude Code'] : ['Claude Code', 'Codex', 'Cursor']).map(p => <option key={p}>{p}</option>)}</select></Field>
-      <Field label="Scope"><select value={form.scope} onChange={e => update('scope', e.target.value)}><option value="user">User</option><option value="project">Project</option></select></Field>
-      {form.scope === 'project' && <Field label="Project folder"><select required value={form.project} onChange={e => update('project', e.target.value)}><option value="">Select a folder</option>{[...new Set([...data.projects, ...data.roots])].map(p => <option key={p}>{p}</option>)}</select></Field>}</div>
+      <Field label="Provider"><select value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value, scope: f.scope === 'local' ? 'project' : f.scope }))}>{(kind === 'commands' ? ['Claude Code', 'Cursor'] : ['Claude Code', 'Codex', 'Cursor']).map(p => <option key={p}>{p}</option>)}</select></Field>
+      <Field label="Scope"><select value={form.scope} onChange={e => update('scope', e.target.value)}><option value="user">User</option><option value="project">Project</option>{kind === 'mcp' && form.provider === 'Claude Code' && <option value="local">Local — private to project</option>}</select></Field>
+      {form.scope !== 'user' && <Field label="Project folder"><select required value={form.project} onChange={e => update('project', e.target.value)}><option value="">Select a folder</option>{[...new Set([...data.projects, ...data.roots])].map(p => <option key={p}>{p}</option>)}</select></Field>}</div>
     {kind === 'memory' && <p>The provider’s native instruction filename will be used: CLAUDE.md, AGENTS.md, or .cursorrules.</p>}
     {unsupported && <Notice>Cursor user rules are configured in Cursor settings. Select Project to create a native instruction file.</Notice>}
-    <Field label={kind === 'mcp' ? 'Native MCP configuration (JSON object containing command/args or url/headers)' : 'Complete Markdown, including any YAML frontmatter'}><textarea className="wb-editor" required value={form.content} onChange={e => update('content', e.target.value)} spellCheck={false} /></Field>
+    <Field label={kind === 'mcp' ? 'Native MCP configuration (JSON object containing command/args or url/headers)' : kind === 'agents' && form.provider === 'Codex' ? 'Complete TOML with name, description and developer_instructions' : 'Complete Markdown, including any YAML frontmatter'}><textarea className="wb-editor" required value={form.content} onChange={e => update('content', e.target.value)} spellCheck={false} /></Field>
     {error && <Notice error>{error}</Notice>}<button className="wb-button primary" disabled={busy || unsupported} type="submit">{busy ? 'Creating…' : 'Create resource'}</button>
   </form></Dialog>;
 }
@@ -135,7 +125,7 @@ function Settings({ data, run, busy, report, onDirty }) {
     </section>
   </>;
 }
-function History({ data, busy, report, edit }) {
+function History({ data, busy, report, edit, run }) {
   const [history, setHistory] = useState([]), [preview, setPreview] = useState(null), [previewError, setPreviewError] = useState('');
   const restoreTarget = preview && data.resources.find(r => !r.parked && !r.readonly && r.canonicalPath === preview.path && r.kind !== 'mcp');
   useEffect(() => { let active = true; request('history').then(r => { if (active) setHistory(r.history); }).catch(report); return () => { active = false; }; }, [data.syncedAt, report]);
@@ -144,6 +134,7 @@ function History({ data, busy, report, edit }) {
     {history.map(entry => <section className="wb-card" key={entry.id}><h3>{entry.label} <span className="wb-muted">{entry.status}</span></h3><p>{new Date(entry.at).toLocaleString()}</p>
       {entry.files.map(file => <div className="wb-row" key={file.path}><code>{file.path}</code><Button disabled={busy} onClick={async () => { try { setPreviewError(''); setPreview(await request('history.read', { id: entry.id, path: file.path })); } catch (e) { report(e); } }}>Inspect previous version</Button></div>)}
       {entry.moves.map(move => <p className="wb-path" key={move.from}>{move.from} → {move.to}</p>)}
+      {entry.transfer && entry.status === 'committed' && <Button disabled={busy} onClick={() => { if (window.confirm(`Undo ${entry.label}? This succeeds only if the transferred files and configuration have not changed since the transfer.`)) void run('transfer.undo', { id: entry.id }).catch(() => {}); }}>Undo transfer</Button>}
     </section>)}
     {preview && <Dialog title="Previous version" close={() => setPreview(null)} wide><p className="wb-path">{preview.path}</p><textarea className="wb-editor" aria-label="Previous file content" readOnly value={preview.content} />
       {previewError && <Notice error>{previewError}</Notice>}
@@ -206,17 +197,21 @@ export function Workbench() {
   const edit = (r, initialDraft) => setModal({ type: 'edit', resource: r, initialDraft });
   const toggle = r => { if (window.confirm(`${r.enabled ? 'Disable' : 'Restore'} ${r.name} in ${r.path}? The provider may require a reload.`)) void run('resource.toggle', { id: r.id, parked: !!r.parked, revision: r.revision, enabled: !r.enabled }).catch(() => {}); };
   const resourceList = items => <div className="wb-list">{!items.length && <Notice>No matching resources found. Choose a scope or add a project folder in Settings.</Notice>}{items.map(r => <article className="wb-resource" key={r.id + (r.parked ? '-parked' : '-live')}>
-    <div><button className="wb-resource-name" onClick={() => edit(r)}>{r.name}</button><span className="wb-badge">{r.provider}</span><span className="wb-badge">{r.scope}</span><span className="wb-badge">{r.readonly ? 'Read-only' : r.archived ? 'Archived' : r.enabled ? 'Configured' : 'Disabled'}</span>
+    <div><button className="wb-resource-name" onClick={() => edit(r)}>{r.name}</button><span className="wb-badge">{r.provider}</span><span className="wb-badge">{r.nativeScope || r.scope}</span><span className="wb-badge">{r.readonly ? 'Read-only' : r.archived ? 'Archived' : r.enabled ? 'Configured' : 'Disabled'}</span>
       <p className="wb-path">{r.path}</p>{r.description && <p>{r.description}</p>}{r.error && <Notice error>{r.error}</Notice>}
       {r.kind === 'mcp' && <p className="wb-muted">{r.transport || 'Native'} · Runtime connection unknown{r.hasSecrets ? ' · Credential fields present' : ''}</p>}
     </div><div className="wb-resource-actions"><Button disabled={busy || !!r.error && r.readonly} onClick={() => edit(r)}>Inspect / edit</Button>
-      {!r.readonly && ['mcp', 'skills', 'commands', 'agents'].includes(r.kind) && <Button disabled={busy} aria-label={`${r.enabled ? 'Disable' : 'Restore'} ${r.name} from ${r.path}`} onClick={() => toggle(r)}>{r.enabled ? 'Disable' : 'Restore'}</Button>}
-      {!r.readonly && !['mcp', 'config'].includes(r.kind) && r.enabled && <Button disabled={busy} onClick={() => { if (window.confirm(`Archive ${r.path}? The complete resource will be recoverable.`)) void run('resource.archive', { id: r.id, parked: !!r.parked, revision: r.revision }).catch(() => {}); }}>Archive</Button>}
-      {!r.enabled && !['mcp', 'skills', 'commands', 'agents'].includes(r.kind) && <Button disabled={busy} onClick={() => toggle(r)}>Restore</Button>}
+      {!r.readonly && ['mcp', 'plugins', 'skills', 'commands', 'agents'].includes(r.kind) && <Button disabled={busy} aria-label={`${r.enabled ? 'Disable' : 'Restore'} ${r.name} from ${r.path}`} onClick={() => toggle(r)}>{r.enabled ? 'Disable' : 'Restore'}</Button>}
+      {!r.readonly && !r.error && !r.overrideOnly && ['mcp', 'plugins', 'skills', 'commands', 'agents', 'memory'].includes(r.kind) && <Button disabled={busy} onClick={() => setModal({ type: 'transfer', resource: r })}>Copy / move</Button>}
+      {r.kind === 'mcp' && !r.readonly && !r.parked && <Button disabled={busy} onClick={() => setModal({ type: 'mcp-project', resource: r })}>Project access</Button>}
+      {!r.readonly && !['mcp', 'plugins', 'config'].includes(r.kind) && r.enabled && <Button disabled={busy} onClick={() => { if (window.confirm(`Archive ${r.path}? The complete resource will be recoverable.`)) void run('resource.archive', { id: r.id, parked: !!r.parked, revision: r.revision }).catch(() => {}); }}>Archive</Button>}
+      {!r.enabled && !['mcp', 'plugins', 'skills', 'commands', 'agents'].includes(r.kind) && <Button disabled={busy} onClick={() => toggle(r)}>Restore</Button>}
       <Button disabled={busy || !!r.error} onClick={() => setModal({ type: 'share', resource: r })}>Export</Button>
     </div></article>)}</div>;
   let screen;
-  if (KINDS.includes(page)) screen = <>{page !== 'config' && <div className="wb-actions"><Button primary disabled={busy} onClick={() => setModal({ type: 'create', kind: page })}>New {page === 'mcp' ? 'MCP server' : page}</Button>{page === 'memory' && <span>Instruction files are listed by source; actual precedence is decided by the provider.</span>}</div>}
+  if (KINDS.includes(page)) screen = <>{!['config', 'plugins'].includes(page) && <div className="wb-actions"><Button primary disabled={busy} onClick={() => setModal({ type: 'create', kind: page })}>New {page === 'mcp' ? 'MCP server' : page}</Button>{page === 'memory' && <span>Instruction files are listed by source; actual precedence is decided by the provider.</span>}</div>}
+    {page === 'plugins' && <Notice>Claude Code and Codex plugin references can be enabled, disabled, copied or moved between their native scopes. Plugin installation, dependencies and organization policy remain managed by the provider. Cursor plugins use Cursor Customize; cross-provider plugin installation is not a file move. Transfer standalone skills, commands, subagents or MCP definitions using their own pages.</Notice>}
+    {page === 'mcp' && <section className="wb-card"><h2>MCP scope controls</h2><p>Filter by User or Project above, then review the matching definitions to enable or disable. User changes apply across projects. Project access controls a Claude or Codex MCP name in a single project, including inherited user servers.</p><p>Reload or start a new provider session after changes. A disabled source does not disable same-named sources in other scopes or plugin-provided servers.</p><div className="wb-actions">{[false, true].map(enabled => { const selected = resources.filter(r => r.kind === 'mcp' && !r.readonly && !r.error && r.enabled !== enabled); return <Button key={String(enabled)} disabled={busy || !selected.length} onClick={() => setModal({ type: 'mcp-batch', resources: selected, enabled })}>{enabled ? 'Enable matching MCPs' : 'Disable matching MCPs'}</Button>; })}</div></section>}
     {page === 'mcp' && <section className="wb-card"><h2>Saved MCP profiles</h2><p>Capture the current enable/disable state. Applying a saved profile affects its recorded sources across projects; newly discovered servers remain unchanged.</p>
       <Button disabled={busy || data.incomplete} onClick={() => setModal({ type: 'profile' })}>Capture current configuration</Button>{data.profiles.map(p => <div key={p.id} className="wb-row"><span>{p.name} · {p.members.length} sources {data.activeProfile === p.id ? '· last applied' : ''}</span><div className="wb-actions"><Button disabled={busy || data.incomplete} onClick={() => setModal({ type: 'profile-preview', profile: p })}>Review / apply</Button><Button disabled={busy} onClick={() => { if (window.confirm(`Delete profile ${p.name}? Configurations will remain unchanged.`)) void run('profiles.delete', { id: p.id }).catch(() => {}); }}>Delete profile</Button></div></div>)}</section>}
     {page === 'config' && <div className="wb-actions"><Button disabled={busy} onClick={() => setModal({ type: 'statusline' })}>Configure Claude statusline</Button><span>Edit native files with full content, syntax checks and conflict protection.</span></div>}
@@ -252,6 +247,9 @@ export function Workbench() {
     {modal?.type === 'profile' && <ProfileDialog run={run} close={() => setModal(null)} />}
     {modal?.type === 'profile-preview' && <ProfilePreview profile={modal.profile} run={run} close={() => setModal(null)} />}
     {modal?.type === 'statusline' && <Statusline run={run} report={report} close={() => setModal(null)} />}
+    {modal?.type === 'transfer' && <TransferDialog resource={modal.resource} data={data} run={run} close={() => setModal(null)} />}
+    {modal?.type === 'mcp-batch' && <McpBatchDialog resources={modal.resources} enabled={modal.enabled} run={run} close={() => setModal(null)} />}
+    {modal?.type === 'mcp-project' && <McpProjectDialog resource={modal.resource} data={data} project={project} run={run} close={() => setModal(null)} />}
   </div>;
 }
 function ProfileDialog({ run, close }) {

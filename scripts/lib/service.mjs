@@ -2,9 +2,10 @@ import * as fs from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { Storage, exists, canonical, inside, readText, fail, hash, MAX_BYTES } from './storage.mjs';
+import { Storage, exists, canonical, inside, readText, fail, hash, MAX_BYTES, atomicWrite } from './storage.mjs';
 import { discover, DEFAULT_PREFS, providerPaths, resourceId } from './discovery.mjs';
-import { validate, parseConfig, jsonText, validateMcp, mcpEnabledToml, appendMcpToml, editJson, jsonValueText } from './formats.mjs';
+import { validate, parseConfig, jsonText, validateMcp, mcpEnabledToml, appendMcpToml, editJson, jsonValueText, editTomlValue } from './formats.mjs';
+import { transferPlan, applyTransfer, bundleInventory } from './transfers.mjs';
 
 const INITIAL = { version: 2, roots: null, preferences: DEFAULT_PREFS, parked: {}, profiles: [], prompts: [], activeProfile: null };
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -64,9 +65,9 @@ export function createService(options = {}) {
     const path = parked ? resource.kind === 'skills' ? join(parked.parkPath, 'SKILL.md') : parked.parkPath : resource.canonicalPath;
     if (resource.readonly && resource.error) fail('READ_ONLY', resource.error);
     const file = readText(canonical(path));
-    if (resource.kind === 'mcp') {
+    if (['mcp', 'plugins'].includes(resource.kind)) {
       const cfg = at(parseConfig(file.content, resource.path), resource.key);
-      return { content: resource.path.endsWith('.toml') ? jsonText(cfg) : jsonValueText(file.content, resource.key), revision: file.revision, readonly: true, path: resource.path, sourceId: resource.sourceId };
+      return { content: resource.kind === 'plugins' ? jsonText({ [resource.name]: cfg }) : resource.path.endsWith('.toml') ? jsonText(cfg) : jsonValueText(file.content, resource.key), revision: file.revision, readonly: true, path: resource.path, sourceId: resource.sourceId };
     }
     return { ...file, readonly: resource.readonly, path: resource.path };
   }
@@ -120,31 +121,76 @@ export function createService(options = {}) {
   }
   function destination(args, state) {
     const { kind, provider, scope } = args;
-    if (!['Claude Code', 'Codex', 'Cursor'].includes(provider) || !['user', 'project'].includes(scope)) fail('INVALID', 'Select a supported provider and scope.');
+    if (!['Claude Code', 'Codex', 'Cursor'].includes(provider) || !['user', 'project', 'local'].includes(scope)) fail('INVALID', 'Select a supported provider and scope.');
+    if (scope === 'local' && (provider !== 'Claude Code' || !['mcp', 'plugins'].includes(kind))) fail('UNSUPPORTED', 'Local scope is supported for Claude MCP and plugin references.');
     const dirs = providerPaths(home, env, state.preferences);
     let root;
-    if (scope === 'project') {
+    if (scope !== 'user') {
       if (!isAbsolute(args.project || '') || !state.roots.some(r => inside(resolve(args.project), r))) fail('INVALID', 'Select a project inside a registered scan folder.');
       if (!exists(args.project) || !fs.statSync(args.project).isDirectory()) fail('NOT_FOUND', 'Project folder does not exist.');
       root = resolve(args.project);
     }
     const base = scope === 'user' ? provider === 'Claude Code' ? dirs.claude : provider === 'Codex' ? dirs.shared : dirs.cursor
       : join(root, provider === 'Claude Code' ? '.claude' : provider === 'Codex' ? '.agents' : '.cursor');
-    const name = nameSafe(args.name);
-    if (['commands', 'agents'].includes(kind) && provider !== 'Claude Code') fail('UNSUPPORTED', 'Commands and subagents currently use the Claude Code native format.');
+    const name = kind === 'plugins' ? args.name : nameSafe(args.name);
+    if (kind === 'plugins' && (typeof name !== 'string' || !/^[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+$/.test(name))) fail('INVALID', 'Select a native plugin-name@marketplace-name reference.');
+    if (kind === 'commands' && provider === 'Codex') fail('UNSUPPORTED', 'Use a Codex skill for reusable commands.');
     let path;
     if (kind === 'skills') path = join(base, 'skills', name, 'SKILL.md');
+    else if (kind === 'agents' && provider === 'Codex') path = join(scope === 'user' ? dirs.codex : join(root, '.codex'), 'agents', name.endsWith('.toml') ? name : name.replace(/\.md$/, '') + '.toml');
     else if (['commands', 'agents'].includes(kind)) path = join(base, kind, name.endsWith('.md') ? name : name + '.md');
     else if (kind === 'memory') {
       if (provider === 'Cursor' && scope === 'user') fail('UNSUPPORTED', 'Cursor user rules are managed in Cursor settings. Select Project to create a native rule file.');
       const expected = provider === 'Claude Code' ? 'CLAUDE.md' : provider === 'Codex' ? 'AGENTS.md' : '.cursorrules';
-      path = join(root || (provider === 'Codex' ? dirs.codex : base), expected);
-    } else if (kind === 'mcp') path = provider === 'Claude Code' ? scope === 'user' ? dirs.claudeJson : join(root, '.mcp.json')
+      path = args.rule && provider === 'Cursor' ? join(base, 'rules', name.endsWith('.mdc') ? name : name + '.mdc') : join(root || (provider === 'Codex' ? dirs.codex : base), expected);
+    } else if (kind === 'plugins') {
+      if (provider === 'Cursor') fail('UNSUPPORTED', 'Cursor plugin installations are managed in Cursor Customize; no supported writable plugin registry is exposed.');
+      path = provider === 'Claude Code' ? join(base, scope === 'local' ? 'settings.local.json' : 'settings.json') : join(scope === 'user' ? dirs.codex : join(root, '.codex'), 'config.toml');
+    } else if (kind === 'mcp') path = provider === 'Claude Code' ? scope === 'user' || scope === 'local' ? dirs.claudeJson : join(root, '.mcp.json')
       : provider === 'Codex' ? join(scope === 'user' ? dirs.codex : join(root, '.codex'), 'config.toml') : join(base, 'mcp.json');
     else fail('UNSUPPORTED', 'Create a skill, command, agent, memory file or MCP configuration.');
     return checkedPath(path, state);
   }
   const saveState = (label, state, writes = [], moves = []) => store.commit(label, [...writes, store.stateWrite('state-v2.json', state)], moves);
+  const transferContext = (state, snapshot) => ({ state, snapshot, find, writable, destination, store, saveState,
+    nativeRoots: Object.entries(providerPaths(home, env, state.preferences)).filter(([key]) => key !== 'claudeJson').map(([, path]) => canonical(path)) });
+
+  function batchPlan(args, state) {
+    if (!Array.isArray(args.sources) || !args.sources.length || args.sources.length > 200 || typeof args.enabled !== 'boolean') fail('INVALID', 'Select 1–200 MCP sources and an enabled state.');
+    const selected = args.sources.map(s => { const r = find(s.id, s.parked); revision(r, s.revision); if (r.kind !== 'mcp' || r.error) fail('INVALID', 'Select readable MCP definitions.'); writable(r, state); return r; });
+    if (new Set(selected.map(r => r.id)).size !== selected.length) fail('CONFLICT', 'Select each MCP source once.');
+    const plans = new Map();
+    for (const r of selected) if (r.enabled !== args.enabled) mcpPlan(r, args.enabled, state, plans);
+    const sources = selected.map(r => ({ id: r.id, name: r.name, path: r.path, provider: r.provider, scope: r.nativeScope || r.scope, project: r.project, from: r.enabled, to: args.enabled, revision: r.revision }));
+    return { sources, plans, previewRevision: hash(JSON.stringify({ sources, plans: [...plans.values()], parked: state.parked })) };
+  }
+
+  function projectMcpPlan(args, state) {
+    const resource = find(args.id, args.parked);
+    if (resource.kind !== 'mcp' || resource.parked || resource.readonly || resource.error) fail('UNSUPPORTED', 'Select a readable, live MCP definition.');
+    if (!['enable', 'disable', 'inherit'].includes(args.action)) fail('INVALID', 'Choose Enable, Disable or Inherit.');
+    if (resource.provider === 'Cursor') fail('UNSUPPORTED', 'Cursor stores per-workspace toggles in its internal application state. Use Cursor Customize for a project-only override of a user server, or move the definition to the intended project. AIOS can disable the selected native user or project definition.');
+    const path = destination({ kind: 'mcp', provider: resource.provider, scope: resource.provider === 'Claude Code' ? 'local' : 'project', project: args.project, name: resource.name }, state);
+    const current = exists(path) ? readText(path) : { content: path.endsWith('.toml') ? '' : '{}\n', revision: null };
+    const obj = parseConfig(current.content, path); let content, from;
+    if (resource.provider === 'Claude Code') {
+      const key = ['projects', resolve(args.project), 'disabledMcpServers'];
+      const list = at(obj, key) ?? [];
+      if (!Array.isArray(list) || list.some(s => typeof s !== 'string')) fail('INVALID', 'The Claude project MCP opt-out list is invalid.');
+      from = list.includes(resource.name) ? 'disabled' : 'not disabled';
+      const next = list.filter(name => name !== resource.name);
+      if (args.action === 'disable') next.push(resource.name);
+      content = editJson(current.content, key, next);
+    } else {
+      const key = ['mcp_servers', resource.name], config = at(obj, key);
+      from = config?.enabled === undefined ? 'inherited' : config.enabled ? 'enabled' : 'disabled';
+      content = args.action === 'inherit' ? config && Object.keys(config).length === 1 && Object.hasOwn(config, 'enabled') ? editTomlValue(current.content, key, undefined) : editTomlValue(current.content, [...key, 'enabled'], undefined)
+        : editTomlValue(current.content, [...key, 'enabled'], args.action === 'enable');
+    }
+    const result = { path, project: resolve(args.project), provider: resource.provider, name: resource.name, action: args.action, from,
+      note: resource.provider === 'Claude Code' ? 'This edits Claude’s per-project opt-out list. Re-enabling does not approve untrusted project servers or override organization policy.' : 'This edits the project config layer. Codex must trust this project for it to apply; more specific config or session overrides may take precedence.' };
+    return { ...result, write: { path, content, revision: current.revision }, previewRevision: hash(JSON.stringify({ ...result, current, content, sourceRevision: resource.revision })) };
+  }
 
   function profilePlan(profile, state) {
     if (snapshot.incomplete) fail('INCOMPLETE', 'Resolve discovery issues before previewing or applying a profile.');
@@ -172,6 +218,18 @@ export function createService(options = {}) {
       const journal = store.readJournal(join(store.journals, entry.id + '.json'));
       const w = journal.writes.find(w => w.path === args.path);
       return { content: w.before?.content ?? '', path: w.path, revision: w.before?.revision, existed: !!w.before };
+    }
+    if (operation === 'transfer.undo') {
+      const entry = store.history().find(h => h.id === args.id && h.transfer && h.status === 'committed');
+      if (!entry) fail('NOT_FOUND', 'Select a completed resource transfer.');
+      const path = join(store.journals, entry.id + '.json'), journal = store.readJournal(path);
+      for (const w of journal.writes) if (!exists(w.path) || readText(w.path).revision !== w.after) fail('CONFLICT', 'Configuration or AIOS state changed after this transfer. Move the resource back using a fresh preview; undo will not overwrite later changes.');
+      for (const move of journal.moves) if (exists(move.from) || !exists(move.to) || !move.digest || bundleInventory(move.to).digest !== move.digest) fail('CONFLICT', 'Transferred files changed. Undo would overwrite later work; no files were changed.');
+      // Persist the rollback intent first. Existing crash recovery can complete
+      // this operation even if the app closes halfway through the undo.
+      journal.status = 'pending'; atomicWrite(path, JSON.stringify(journal));
+      store.rollback(journal); journal.status = 'undone'; atomicWrite(path, JSON.stringify(journal));
+      return scan(load());
     }
     const state = load();
     if (operation === 'tools.detect') {
@@ -214,9 +272,29 @@ export function createService(options = {}) {
     scan(state);
     if (operation === 'inventory') return { ...snapshot, preferences: state.preferences, profiles: state.profiles, activeProfile: state.activeProfile, prompts: state.prompts };
     if (operation === 'resource.read') return contentFor(find(args.id, args.parked), state);
+    if (operation === 'transfer.preview' || operation === 'transfer.apply') {
+      const context = transferContext(state, snapshot), plan = transferPlan(args, context);
+      if (operation === 'transfer.preview') return plan.preview;
+      if (args.previewRevision !== plan.preview.previewRevision) fail('CONFLICT', 'The resource or destination changed. Review a fresh transfer preview.');
+      applyTransfer(plan, context); return scan(state);
+    }
+    if (operation === 'mcp.batch.preview' || operation === 'mcp.batch.apply') {
+      const plan = batchPlan(args, state);
+      if (operation === 'mcp.batch.preview') return { sources: plan.sources, previewRevision: plan.previewRevision };
+      if (args.previewRevision !== plan.previewRevision) fail('CONFLICT', 'MCP sources changed. Review a fresh preview.');
+      if (!plan.plans.size) return scan(state);
+      state.activeProfile = null; saveState(args.enabled ? 'Enable selected MCP sources' : 'Disable selected MCP sources', state, [...plan.plans.values()]); return scan(state);
+    }
+    if (operation === 'mcp.project.preview' || operation === 'mcp.project.apply') {
+      const { write, ...preview } = projectMcpPlan(args, state);
+      if (operation === 'mcp.project.preview') return preview;
+      if (args.previewRevision !== preview.previewRevision) fail('CONFLICT', 'Project settings changed. Review a fresh preview.');
+      state.activeProfile = null;
+      saveState(`${args.action} MCP ${preview.name} in project`, state, [write]); return scan(state);
+    }
     if (operation === 'resource.write') {
       const r = find(args.id, args.parked); revision(r, args.revision);
-      if (r.kind === 'mcp') fail('READ_ONLY', 'Edit the native source file to change this MCP configuration.');
+      if (['mcp', 'plugins'].includes(r.kind)) fail('READ_ONLY', 'Edit the native source file to change this configuration entry.');
       writable(r, state);
       const parked = r.parked ? state.parked[r.id] : null;
       const path = parked ? r.kind === 'skills' ? join(parked.parkPath, 'SKILL.md') : parked.parkPath : r.canonicalPath;
@@ -230,13 +308,19 @@ export function createService(options = {}) {
       const enabled = operation === 'resource.archive' ? false : args.enabled;
       if (typeof enabled !== 'boolean') fail('INVALID', 'Enabled must be a boolean.');
       const plans = new Map(), moves = [];
-      if (r.kind === 'mcp') mcpPlan(r, enabled, state, plans);
+      if (r.kind === 'plugins') {
+        if (operation === 'resource.archive') fail('UNSUPPORTED', 'Disable the plugin reference instead of archiving it.');
+        const path = writable(r, state), current = readText(path);
+        const content = path.endsWith('.toml') ? editTomlValue(current.content, [...r.key, 'enabled'], enabled) : editJson(current.content, r.key, enabled);
+        plans.set(path, { path, content, revision: current.revision });
+      } else if (r.kind === 'mcp') mcpPlan(r, enabled, state, plans);
       else moves.push(fileToggle(r, enabled, state, operation === 'resource.archive'));
       state.activeProfile = null;
       saveState(`${enabled ? 'Restore' : 'Disable'} ${r.name}`, state, [...plans.values()], moves); return scan(state);
     }
     if (operation === 'resource.create') {
       if (args.kind === 'mcp') fail('INVALID', 'Use MCP creation to validate the server configuration.');
+      if (args.kind === 'plugins') fail('UNSUPPORTED', 'Install plugins through their provider, then manage their discovered native references.');
       const path = destination(args, state);
       if (exists(path)) fail('CONFLICT', 'A resource already exists at this destination.');
       if (typeof args.content !== 'string') fail('INVALID', 'Provide resource content.');
@@ -246,12 +330,13 @@ export function createService(options = {}) {
       const path = destination({ ...args, kind: 'mcp' }, state), name = nameSafe(args.name); validateMcp(args.config);
       const current = exists(path) ? readText(path) : { content: path.endsWith('.toml') ? '' : '{}\n', revision: null };
       const obj = parseConfig(current.content, path);
-      const key = path.endsWith('.toml') ? 'mcp_servers' : 'mcpServers';
-      if (obj[key] !== undefined && !object(obj[key])) fail('INVALID', 'MCP server collection must be an object.');
-      if (Object.hasOwn(obj[key] || {}, name)) fail('CONFLICT', 'An MCP server with this name already exists in the selected source.');
+      const keys = args.provider === 'Claude Code' && args.scope === 'local' ? ['projects', resolve(args.project), 'mcpServers'] : [path.endsWith('.toml') ? 'mcp_servers' : 'mcpServers'];
+      const collection = at(obj, keys);
+      if (collection !== undefined && !object(collection)) fail('INVALID', 'MCP server collection must be an object.');
+      if (Object.hasOwn(collection || {}, name)) fail('CONFLICT', 'An MCP server with this name already exists in the selected source.');
       let content;
       if (path.endsWith('.toml')) content = appendMcpToml(current.content, name, args.config);
-      else content = editJson(current.content, [key, name], args.config);
+      else content = editJson(current.content, [...keys, name], args.config);
       store.commit(`Create MCP ${name}`, [{ path, content, revision: current.revision }]); return scan(state);
     }
     if (operation === 'profiles.capture') {

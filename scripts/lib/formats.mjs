@@ -54,7 +54,10 @@ export function editJson(raw, path, value, valueText) {
   jsonTree(result); return result;
 }
 export function validate(raw, path, kind) {
-  if (/\.(json|toml)$/.test(path)) parseConfig(raw, path);
+  if (/\.(json|toml)$/.test(path)) {
+    const config = parseConfig(raw, path);
+    if (kind === 'agents' && path.endsWith('.toml') && ['name', 'description', 'developer_instructions'].some(key => typeof config[key] !== 'string' || !config[key].trim())) fail('INVALID', 'A Codex subagent needs name, description and developer_instructions strings.');
+  }
   else if (/\.(md|mdc)$/.test(path) && (kind !== 'memory' || path.endsWith('.mdc'))) {
     try { frontmatter(raw); } catch (error) { fail('INVALID', `${error.message} Original file was preserved.`); }
   }
@@ -98,6 +101,58 @@ export function mcpEnabledToml(raw, name, enabled) {
 export function appendMcpToml(raw, name, config) {
   const tail = TOML.stringify({ mcp_servers: TOML.Section({ [name]: TOML.Section(config) }) }, { newline: '\n' });
   const result = raw + '\n' + (Array.isArray(tail) ? tail.join('\n') : tail) + '\n';
+  parseConfig(result, 'config.toml'); return result;
+}
+// Edit one TOML value/subtree while preserving unrelated bytes, including
+// comments, dotted keys and inline tables. Never stringify the whole config.
+export function editTomlValue(raw, target, value) {
+  parseConfig(raw, 'config.toml');
+  const ast = parseForESLint(raw).ast, nodes = [], tables = [];
+  const prefix = (a, b) => b.every((key, i) => a[i] === key);
+  function visit(node, path = []) {
+    if (node.type === 'TOMLTable') { path = node.resolvedKey; tables.push({ node, path }); }
+    if (node.type === 'TOMLKeyValue') {
+      path = [...path, ...node.key.keys.map(k => k.name ?? k.value)]; nodes.push({ node, path });
+      if (node.value.type === 'TOMLInlineTable') for (const child of node.value.body) visit(child, path);
+      return;
+    }
+    for (const child of node.body || []) visit(child, path);
+  }
+  visit(ast);
+  const keyText = keys => keys.map(JSON.stringify).join('.');
+  const literal = v => {
+    if (typeof v === 'string' || typeof v === 'boolean') return JSON.stringify(v);
+    if (typeof v === 'number' && Number.isFinite(v) && (!Number.isInteger(v) || Number.isSafeInteger(v))) return String(v);
+    if (Array.isArray(v)) return `[${v.map(literal).join(', ')}]`;
+    if (v && typeof v === 'object') return `{ ${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)} = ${literal(x)}`).join(', ')} }`;
+    fail('UNSUPPORTED', 'This value cannot be transferred losslessly to TOML.');
+  };
+  const exact = nodes.find(n => n.path.length === target.length && prefix(n.path, target));
+  const changes = [];
+  if (value !== undefined && exact) changes.push([exact.node.value.range[0], exact.node.value.range[1], literal(value)]);
+  else if (value !== undefined) {
+    const inline = nodes.filter(n => prefix(target, n.path) && n.node.value.type === 'TOMLInlineTable').sort((a, b) => b.path.length - a.path.length)[0];
+    if (inline) { const at = inline.node.value.range[1] - 1; changes.push([at, at, `${inline.node.value.body.length ? ', ' : ''}${keyText(target.slice(inline.path.length))} = ${literal(value)}`]); }
+    else {
+      const table = tables.filter(t => prefix(target, t.path) && t.path.length < target.length && t.node.kind !== 'array').sort((a, b) => b.path.length - a.path.length)[0];
+      if (table) { const at = raw.indexOf('\n', table.node.key.range[1]); changes.push(at < 0 ? [raw.length, raw.length, `\n${keyText(target.slice(table.path.length))} = ${literal(value)}\n`] : [at + 1, at + 1, `${keyText(target.slice(table.path.length))} = ${literal(value)}\n`]); }
+      else changes.push([0, 0, `${keyText(target)} = ${literal(value)}\n`]);
+    }
+  } else {
+    for (const { node, path } of tables) if (prefix(path, target)) changes.push([...node.range, '']);
+    for (const { node, path } of nodes) {
+      if (!prefix(path, target) || changes.some(([start, end]) => node.range[0] >= start && node.range[1] <= end)) continue;
+      let [start, end] = node.range;
+      if (node.parent.type === 'TOMLInlineTable') {
+        const siblings = node.parent.body, index = siblings.indexOf(node);
+        if (index < siblings.length - 1) end = siblings[index + 1].range[0];
+        else if (index > 0) start = siblings[index - 1].range[1];
+      }
+      changes.push([start, end, '']);
+    }
+  }
+  let result = raw;
+  for (const [start, end, text] of changes.sort((a, b) => b[0] - a[0])) result = result.slice(0, start) + text + result.slice(end);
   parseConfig(result, 'config.toml'); return result;
 }
 export function validateMcp(cfg) {

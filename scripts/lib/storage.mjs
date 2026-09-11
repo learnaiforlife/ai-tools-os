@@ -156,6 +156,7 @@ export class Storage {
     });
     for (const m of moves) {
       if (!exists(m.from)) fail('CONFLICT', 'The source no longer exists. Refresh the inventory.');
+      m.validate?.(m.from);
       if (exists(m.to)) fail('CONFLICT', `Restore destination already exists: ${m.to}`);
       fs.mkdirSync(dirname(m.to), { recursive: true, mode: 0o700 });
       if (fs.statSync(dirname(m.from)).dev !== fs.statSync(dirname(m.to)).dev) fail('CROSS_DEVICE', 'Safe directory parking requires the same filesystem as AIOS state. Edit the provider configuration instead.');
@@ -166,6 +167,7 @@ export class Storage {
     try {
       for (const [i, m] of moves.entries()) {
         if (!exists(m.from) || exists(m.to)) fail('CONFLICT', 'A move destination changed during the transaction. Both copies were preserved.');
+        m.validate?.(m.from);
         fs.renameSync(m.from, m.to); syncDir(dirname(m.from)); syncDir(dirname(m.to)); this.fault?.('move', i);
       }
       for (const [i, w] of prepared.entries()) {
@@ -188,6 +190,7 @@ export class Storage {
     return fs.readdirSync(this.journals).filter(n => n.endsWith('.json')).map(n => {
       const j = this.readJournal(join(this.journals, n));
       return { id: j.id, at: j.at, label: j.label, status: j.status,
+        transfer: /^(Copy|Move) /.test(j.label),
         files: j.writes.filter(w => !inside(w.path, this.dir)).map(w => ({ path: w.path, beforeRevision: w.before?.revision, afterRevision: w.after })),
         moves: j.moves };
     }).sort((a, b) => b.at.localeCompare(a.at));

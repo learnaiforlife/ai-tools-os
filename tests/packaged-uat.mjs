@@ -54,7 +54,7 @@ export async function runPackagedUat({ session, home, results, output }) {
   await js('window.confirm=()=>true;true');
   await step('packaged window renders styled content and every navigation destination', async () => {
     assert.equal(session.rendered, true);
-    for (const page of ['Overview','Skills','MCP servers','Memory & rules','Config files','Commands','Subagents','Prompt library','Security review','Context estimates','External tools','History & recovery','Getting started','Settings']) await nav(page);
+    for (const page of ['Overview','Skills','MCP servers','Plugins','Memory & rules','Config files','Commands','Subagents','Prompt library','Security review','Context estimates','External tools','History & recovery','Getting started','Settings']) await nav(page);
     assert.ok((await mainText()).includes(home));
   });
   await step('provider, user/project scopes and search select the correct resources', async () => {
@@ -224,6 +224,57 @@ export async function runPackagedUat({ session, home, results, output }) {
       assert.equal(await js("document.querySelectorAll('main [role=alert]').length"), 0); assert.ok((await mainText()).includes('0 reported source issues'));
       await nav('MCP servers'); assert.equal(await js("[...document.querySelectorAll('main button')].find(b=>b.textContent==='Capture current configuration').disabled"), false);
     } finally { fs.writeFileSync(path, original); fs.rmSync(legacy, { force: true }); await sync(); }
+    await nav('Overview'); assert.deepEqual(session.rendererErrors,[]);
+  });
+  const reviewTransfer = async () => {
+    await button('Review transfer'); await wait("!!document.querySelector('dialog input[type=checkbox]')");
+    assert.equal(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Apply transfer').disabled"), true);
+    await js("document.querySelector('dialog input[type=checkbox]').click()"); await button('Apply transfer'); await finish();
+  };
+  await step('skill transfer preview copies supporting files and History undoes the transfer', async () => {
+    await nav('Skills'); await rowButton('UAT skill', 'Copy / move');
+    await input('dialog .wb-form-grid label:nth-child(2) select', 'Cursor'); await input('dialog .wb-form-grid label:nth-child(4) select', project);
+    await input('dialog .wb-form-grid input', 'uat-transferred');
+    await session.viewport(720,520); await button('Review transfer'); await wait("!!document.querySelector('dialog input[type=checkbox]')");
+    assert.ok(await js("document.documentElement.scrollWidth<=innerWidth && document.querySelector('dialog').getBoundingClientRect().right<=innerWidth"));
+    fs.writeFileSync(output.replace('.png','-transfer-small.png'),await session.screenshot()); await session.viewport(1440,960);
+    await reviewTransfer();
+    const path=join(project,'.cursor/skills/uat-transferred'); assert.equal(fs.readFileSync(join(path,'support.txt'),'utf8'),'Support file must survive parking');
+    assert.ok(fs.readFileSync(join(path,'SKILL.md'),'utf8').includes('name: uat-transferred')); assert.ok(fs.existsSync(join(home,'.claude/skills/uat/SKILL.md')));
+    await nav('History & recovery'); await button('Undo transfer'); await idle(); assert.equal(fs.existsSync(path),false);
+  });
+  await step('bulk MCP controls change only filtered sources and restore native settings', async () => {
+    await nav('MCP servers'); await input('[aria-label="Provider"]','Cursor'); await input('[aria-label="Scope"]','user');
+    await button('Disable matching MCPs'); assert.ok(!(await js("document.querySelector('dialog').innerText")).includes('uat-codex'));
+    await button('Review selected sources'); await wait("!!document.querySelector('dialog .wb-button.primary')"); await button('Apply MCP changes'); await finish();
+    const path=join(home,'.cursor/mcp.json'); assert.equal(JSON.parse(fs.readFileSync(path)).mcpServers['uat-remote'],undefined);
+    await button('Enable matching MCPs'); await button('Review selected sources'); await wait("!!document.querySelector('dialog .wb-button.primary')"); await button('Apply MCP changes'); await finish();
+    assert.equal(JSON.parse(fs.readFileSync(path)).mcpServers['uat-remote'].headers.Authorization,'Bearer uat-private-token');
+    await rowButton('uat-remote','Project access'); assert.ok((await js("document.querySelector('dialog').innerText")).includes('Cursor keeps project-only toggles')); await close();
+    await input('[aria-label="Provider"]','all'); await input('[aria-label="Scope"]','all');
+  });
+  await step('project access disables inherited Claude and Codex MCPs without removing user definitions', async () => {
+    for(const name of ['uat-local','uat-codex']) {
+      await rowButton(name,'Project access'); await input('dialog select',project); await button('Review project access'); await wait("!!document.querySelector('dialog .wb-button.primary')"); await button('Apply project access'); await finish();
+      if(name==='uat-local') { const cfg=JSON.parse(fs.readFileSync(join(home,'.claude.json'))); assert.ok(cfg.projects[project].disabledMcpServers.includes(name)); assert.ok(cfg.mcpServers[name]); }
+      else assert.match(fs.readFileSync(join(project,'.codex/config.toml'),'utf8'),/false/);
+      await rowButton(name,'Project access'); await input('dialog select',project); await input('dialog label:nth-of-type(2) select',name==='uat-local'?'enable':'inherit');
+      await button('Review project access'); await wait("!!document.querySelector('dialog .wb-button.primary')"); await button('Apply project access'); await finish();
+    }
+    assert.equal(JSON.parse(fs.readFileSync(join(home,'.claude.json'))).projects[project].disabledMcpServers.length,0);
+  });
+  await step('native MCP and subagent transfers render and apply provider conversions', async () => {
+    await rowButton('uat-local','Copy / move'); await input('dialog .wb-form-grid label:nth-child(2) select','Cursor'); await input('dialog .wb-form-grid label:nth-child(4) select',project); await input('dialog .wb-form-grid input','uat-scope-mcp'); await reviewTransfer();
+    assert.deepEqual(JSON.parse(fs.readFileSync(join(project,'.cursor/mcp.json'))).mcpServers['uat-scope-mcp'].args,['two words']);
+    await nav('Subagents'); await rowButton('UAT agent','Copy / move'); await input('dialog .wb-form-grid label:nth-child(2) select','Codex'); await input('dialog .wb-form-grid label:nth-child(4) select',project); await input('dialog .wb-form-grid input','uat-converted-agent'); await reviewTransfer();
+    const raw=fs.readFileSync(join(project,'.codex/agents/uat-converted-agent.toml'),'utf8'); assert.ok(raw.includes('developer_instructions')); assert.ok(raw.includes('Agent body'));
+    assert.ok(fs.existsSync(join(home,'.claude/agents/uat-agent.md')));
+  });
+  await step('plugin references expose native toggles and scoped transfers', async () => {
+    const path=join(home,'.claude/settings.json'), cfg=JSON.parse(fs.readFileSync(path));cfg.enabledPlugins={'uat-plugin@fixture':true};fs.writeFileSync(path,JSON.stringify(cfg));
+    await nav('Plugins'); await sync(); await rowButton('uat-plugin@fixture','Disable'); await idle(); assert.equal(JSON.parse(fs.readFileSync(path)).enabledPlugins['uat-plugin@fixture'],false);
+    await rowButton('uat-plugin@fixture','Copy / move'); await input('dialog .wb-form-grid label:nth-child(4) select',project); await reviewTransfer();
+    assert.equal(JSON.parse(fs.readFileSync(join(project,'.claude/settings.json'))).enabledPlugins['uat-plugin@fixture'],false);
     await nav('Overview'); assert.deepEqual(session.rendererErrors,[]); fs.writeFileSync(output,await session.screenshot());
   });
 }
