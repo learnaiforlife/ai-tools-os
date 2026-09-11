@@ -219,3 +219,10 @@ test('long code fences cannot be closed by shorter example fences during review'
   const content = `# File\n\n\`\`\`\`md\n\`\`\`\n${paragraph}\n\n${paragraph}\n\`\`\`\`\n`;
   const r = reviewMemory([{ id: 'm', path: '/test/CLAUDE.md', scope: 'user', content }]); assert.equal(r.findings.filter(f => f.code === 'DUPLICATE').length, 0);
 });
+test('malformed model answers and rewrite rationales are rejected before rendering', async t => {
+  const f = fixture(t), invalidAnswer = createEvaluator({ home: f.home, env: {}, run: fakeRun(() => response({ unexpected: 'object' })) });
+  await assert.rejects(invalidAnswer.call({ prompt: 'test', directory: f.home, settings, signal: new AbortController().signal, budget: { limit: 1, spent: 0 } }), { code: 'ENGINE_RESPONSE' });
+  const evaluator = createEvaluator({ home: f.home, env: {}, run: fakeRun(() => response('', { structured_output: { content: fs.readFileSync(f.skill, 'utf8'), rationale: { invalid: true } } })) });
+  const lab = createLab({ home: f.home, env: {}, service: f.service, evaluator }); const r = await lab.request('proposal', { id: f.resource.id, settings });
+  const j = await done(lab, r.job.id); assert.equal(j.status, 'failed'); assert.equal(j.code, 'INVALID');
+});

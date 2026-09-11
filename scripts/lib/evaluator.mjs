@@ -98,6 +98,7 @@ export function createEvaluator({ home, env = process.env, run = runProcess }) {
       else result = JSON.parse(raw.stdout);
     } catch { fail('ENGINE_RESPONSE', 'Claude did not return JSON. Check that Claude Code is signed in and updated. No score was recorded.'); }
     if (!result || result.type !== 'result') fail('ENGINE_RESPONSE', 'Claude did not return a completed result. No score was recorded.');
+    if (result.result !== undefined && typeof result.result !== 'string') fail('ENGINE_RESPONSE', 'Claude returned an invalid answer type. No score was recorded.');
     if (result.is_error && /authenticat|OAuth|sign.?in|login|API key/i.test(String(result.result))) fail('AUTH_REQUIRED', 'Claude Code is not authenticated. Run claude auth login in Terminal, then retry this job.');
     if (trigger) {
       const init = events.find(e => e.type === 'system' && e.subtype === 'init');
