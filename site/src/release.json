@@ -2,22 +2,22 @@
   "available": true,
   "channel": "beta",
   "verification": "ad-hoc",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "minMacOS": "13.0",
   "artifacts": [
     {
-      "name": "AI-Tools-OS-1.1.2-arm64.dmg",
+      "name": "AI-Tools-OS-1.1.3-arm64.dmg",
       "arch": "arm64",
-      "size": 127712228,
-      "sha512": "qk5fs+MMoXYJz7kJKxuYe5hJlj/xfyLQstdh7tcdU73qPdjYd4gEhyDBBIwcODGXfcEf2CwQ2c3WlnLI1eyi7w==",
-      "url": "https://dzqec0d3bjo9ze9s.public.blob.vercel-storage.com/aios/1.1.2-beta/574455df827cfeaf/AI-Tools-OS-1.1.2-arm64.dmg"
+      "size": 127712683,
+      "sha512": "tYqhz1wBqp8hL3NNrrzRUlIuqX3ff0EJhZckzp/Srpj7Itu+3s1uhz0UfO/EV+OzFCyTiJxDjFnEAIQjINxvgg==",
+      "url": "https://github.com/learnaiforlife/ai-tools-os/releases/download/v1.1.3-beta/AI-Tools-OS-1.1.3-arm64.dmg"
     },
     {
-      "name": "AI-Tools-OS-1.1.2-x64.dmg",
+      "name": "AI-Tools-OS-1.1.3-x64.dmg",
       "arch": "x64",
-      "size": 134979072,
-      "sha512": "KSj3+fTSBsTiPXbx42oKnNK0jZp1CVwyD51DqGQeZeiMF2uBsMBGOpvpyo5YfbndlGD60htYQU6Bqkg6AuPxnQ==",
-      "url": "https://dzqec0d3bjo9ze9s.public.blob.vercel-storage.com/aios/1.1.2-beta/169d121f82982e43/AI-Tools-OS-1.1.2-x64.dmg"
+      "size": 134979835,
+      "sha512": "tGF80L2WNJQ3S7dm+Y7sHo2uXnU4IJ9ER8kGlnK2V3Q12qYxogu/mRSs3WLrXxzOe9DoxYZ56j2N3tlO9MHw0A==",
+      "url": "https://github.com/learnaiforlife/ai-tools-os/releases/download/v1.1.3-beta/AI-Tools-OS-1.1.3-x64.dmg"
     }
   ]
 }
