@@ -1,5 +1,6 @@
 import './styles.css';
 import release from './release.json';
+import { getReleaseInfo } from './release-info.js';
 
 document.querySelector('#app').innerHTML = `
   <main>
@@ -11,18 +12,19 @@ document.querySelector('#app').innerHTML = `
       </div><div class="product-shot" style="padding:32px"><h2>Built around your actual files</h2><p>Provider and project source paths</p><p>Complete Markdown, JSON and TOML editing</p><p>Conflict detection and private backup history</p><p>Reversible resource disable and restore</p><p>No account. No cloud configuration service.</p></div></div>
     </section>
     <section class="band"><div class="feature-grid"><article><h2>Machine discovery</h2><p>Detect native user locations and add your project folders. Custom provider paths are supported.</p></article><article><h2>Source-aware changes</h2><p>Edit the selected provider and project. Same-named resources in other projects retain their own identity.</p></article><article><h2>Recoverable edits</h2><p>Writes preserve permissions and detect changed files. Private transaction history supports review and recovery.</p></article></div></section>
-    <section id="install" class="install"><div><p class="eyebrow">Installation</p><h2>macOS 13 or later</h2></div><ol><li>Choose the verified installer for Apple Silicon or Intel when a signed release is available.</li><li>Open the DMG and drag AI Tools OS into Applications.</li><li>Open the app and choose the project folders you want it to discover.</li><li>If macOS rejects an installer, stop and obtain a verified release. Do not remove quarantine protection.</li></ol></section>
+    <section id="install" class="install"><div><p class="eyebrow">Installation</p><h2>macOS 13 or later</h2><div class="actions" id="install-downloads"></div><p class="fine-print" id="install-status"></p></div><ol><li>Choose the download for your Mac: Apple Silicon or Intel.</li><li>Open the DMG and drag AI Tools OS into Applications.</li><li>Open the app and choose the project folders you want it to discover.</li><li id="first-launch"></li></ol></section>
   </main>`;
-const downloads = document.querySelector('#downloads'), status = document.querySelector('#release-status');
-if (!release.available) {
-  status.textContent = `Version ${release.version} is undergoing release validation. Signed installers are not yet available here.`;
-} else {
-  const dmgs = release.artifacts.filter(a => a.name.endsWith('.dmg'));
-  if (dmgs.length !== 2 || !['arm64', 'x64'].every(arch => dmgs.some(a => a.arch === arch))) throw Error('Release manifest must contain both Mac architectures.');
-  for (const item of dmgs) {
-    const url = new URL(item.url); if (url.protocol !== 'https:') throw Error('Installer URL must use HTTPS.');
-    const anchor = document.createElement('a'); anchor.className = 'button primary'; anchor.href = url.href; anchor.textContent = item.arch === 'arm64' ? 'Download for Apple Silicon' : 'Download for Intel';
-    downloads.append(anchor);
+const info = getReleaseInfo(release);
+for (const selector of ['#downloads', '#install-downloads']) {
+  const downloads = document.querySelector(selector);
+  for (const item of info.downloads) {
+    const anchor = document.createElement('a'); anchor.className = 'button primary'; anchor.href = item.url; anchor.textContent = item.label;
+    anchor.title = `${Math.round(item.size / 1024 / 1024)} MB DMG${info.beta ? ' · Beta' : ''}`; downloads.append(anchor);
   }
-  status.textContent = `Version ${release.version}. macOS ${release.minMacOS} or later. Developer ID signed and notarized.`;
 }
+for (const selector of ['#release-status', '#install-status']) document.querySelector(selector).textContent = info.status;
+const firstLaunch = document.querySelector('#first-launch');
+if (info.needsApproval) {
+  firstLaunch.append('This beta is not Apple notarized. If macOS blocks it and you trust this download, follow ');
+  const guide = document.createElement('a'); guide.href = 'https://support.apple.com/en-us/102445'; guide.textContent = 'Apple’s instructions for opening an app from an unidentified developer'; firstLaunch.append(guide, '.');
+} else firstLaunch.textContent = 'Review the macOS first-launch prompt before opening the app.';

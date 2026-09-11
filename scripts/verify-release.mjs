@@ -46,7 +46,7 @@ try {
   const base = process.env.AIOS_DOWNLOAD_BASE_URL;
   if (base) {
     const url = new URL(base); if (url.protocol !== 'https:') throw Error('Download hosting must use HTTPS.');
-    const manifest = { available: true, version: pkg.version, minMacOS: '13.0', artifacts: records.map(r => ({ ...r, url: new URL(encodeURIComponent(basename(r.name)), url.href.replace(/\/?$/, '/')).href })) };
+    const manifest = { available: true, channel: 'stable', verification: 'developer-id-notarized', version: pkg.version, minMacOS: '13.0', artifacts: records.map(r => ({ ...r, url: new URL(encodeURIComponent(basename(r.name)), url.href.replace(/\/?$/, '/')).href })) };
     fs.writeFileSync('site/src/release.json', JSON.stringify(manifest, null, 2) + '\n');
   }
   console.log(`Verified ${records.length} signed and notarized artifacts. Checksums generated from final bytes.`);

@@ -198,10 +198,12 @@ h2 {
   background: #fffaf1;
 }
 
-.feature-grid p,
-.install li {
+.feature-grid p {
   color: #50483d;
 }
+
+.install li { color: #ddd6ca; }
+.install .actions { margin-top: 24px; }
 
 .install {
   display: grid;

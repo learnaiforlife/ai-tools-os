@@ -8,6 +8,27 @@ import { digest, verifyInstallerMetadata } from '../scripts/package-checks.mjs';
 import siteConfig from '../site/vite.config.js';
 import { packagedSession } from '../scripts/packaged-session.mjs';
 import { writeInstallerMetadata } from '../scripts/release-metadata.mjs';
+import { getReleaseInfo } from '../site/src/release-info.js';
+
+const releaseFixture = () => ({ available: true, channel: 'beta', verification: 'unsigned', version: '1.1.0', minMacOS: '13.0', artifacts: ['arm64', 'x64'].map(arch => ({ name: `app-${arch}.dmg`, arch, size: 100, sha512: digest(Buffer.from(arch)), url: `https://example.test/app-${arch}.dmg` })) });
+test('beta downloads remain available without claiming Apple signing or notarization', () => {
+  const result = getReleaseInfo(releaseFixture());
+  assert.equal(result.downloads.length, 2); assert.equal(result.needsApproval, true);
+  assert.match(result.status, /beta/); assert.match(result.status, /No Apple Developer ID signature or notarization/);
+  assert.deepEqual(result.downloads.map(d => d.label), ['Download for Apple Silicon', 'Download for Intel']);
+});
+test('stable downloads require an explicit signed result and valid complete download metadata', () => {
+  const release = releaseFixture(); release.channel = 'stable';
+  assert.throws(() => getReleaseInfo(release), /require Developer ID/);
+  release.verification = 'developer-id-notarized'; assert.equal(getReleaseInfo(release).needsApproval, false);
+  release.artifacts[0].url = 'http://example.test/app.dmg'; assert.throws(() => getReleaseInfo(release), /HTTPS/);
+  release.artifacts[0].url = 'https://example.test/app.dmg'; release.artifacts[0].sha512 = 'stale'; assert.throws(() => getReleaseInfo(release), /checksum/);
+  release.artifacts.pop(); assert.throws(() => getReleaseInfo(release), /both Mac architectures/);
+});
+test('the published manifest is renderable and unpublished releases expose no downloads', () => {
+  getReleaseInfo(JSON.parse(fs.readFileSync('site/src/release.json', 'utf8')));
+  assert.deepEqual(getReleaseInfo({ available: false, version: '1.1.0' }).downloads, []);
+});
 
 test('installer metadata must reference the final artifact bytes and primary checksum', t => {
   const dir = fs.mkdtempSync(join(tmpdir(), 'aios-release-metadata-'));
