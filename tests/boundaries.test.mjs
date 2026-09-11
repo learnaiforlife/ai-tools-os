@@ -9,6 +9,7 @@ import { createService } from '../scripts/lib/service.mjs';
 import { handleAiosApiRequest, aiosBridge } from '../scripts/aios-bridge.mjs';
 import { redactConfig, copyText } from '../src/api.js';
 import { hash, readText, MAX_BYTES } from '../scripts/lib/storage.mjs';
+import { frontmatter, validate } from '../scripts/lib/formats.mjs';
 
 const fixture = t => {
   const home = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'aios-boundary-')));
@@ -129,6 +130,15 @@ test('invalid UTF-8 is rejected without replacing original bytes', t => {
   const f = fixture(t), path = f.put('.claude/CLAUDE.md', Buffer.from([0xff, 0xfe, 0x00]));
   const inv = f.call('inventory'); assert.ok(inv.issues.some(i => i.code === 'ENCODING'));
   assert.deepEqual(fs.readFileSync(path), Buffer.from([0xff, 0xfe, 0x00]));
+});
+test('frontmatter errors identify the line and repair without exposing header values', t => {
+  const raw = '---\nname: example\ndescription: private-header-value: another value\n---\nBody';
+  const check = error => error.code === 'INVALID' && error.message.includes('line 3') && error.message.includes('Quote text') && !error.message.includes('private-header-value');
+  assert.throws(() => frontmatter(raw), check); assert.throws(() => validate(raw, 'SKILL.md', 'skills'), check);
+  const f = fixture(t); f.put('.claude/skills/example/SKILL.md', raw);
+  const issue = f.call('inventory').issues.find(i => i.code === 'PARSE_ERROR'); assert.ok(issue.message.includes('line 3')); assert.ok(!issue.message.includes('private-header-value'));
+  const repaired = raw.replace('description: private-header-value: another value', 'description: "private-header-value: another value"');
+  assert.equal(frontmatter(repaired).metadata.description, 'private-header-value: another value'); assert.equal(frontmatter(repaired).body, 'Body');
 });
 test('special native files cannot block discovery or text reads', t => {
   const f = fixture(t), path = join(f.home, '.claude/CLAUDE.md');

@@ -84,7 +84,7 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
           item.name = typeof metadata.name === 'string' ? metadata.name : kind === 'skills' ? basename(dirname(path)) : basename(path);
           item.description = typeof metadata.description === 'string' ? metadata.description : '';
           item.syntax = 'parsed';
-        } catch { item.error = 'Invalid YAML frontmatter'; issue(path, item.error, 'PARSE_ERROR'); }
+        } catch (error) { item.error = error.message; issue(path, item.error, 'PARSE_ERROR'); }
       }
       if (kind === 'config') {
         try {

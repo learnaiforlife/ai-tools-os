@@ -209,6 +209,21 @@ export async function runPackagedUat({ session, home, results, output }) {
     await nav('Context estimates'); assert.ok((await mainText()).includes('estimated text tokens'));
     await nav('External tools'); await wait("document.querySelector('main').innerText.includes('markitdown')");
     await nav('Overview'); await idle(); assert.equal(await js("!!document.querySelector('[data-aios-recovery]')"),false);
-    assert.deepEqual(session.rendererErrors,[]);fs.writeFileSync(output,await session.screenshot());
+    assert.deepEqual(session.rendererErrors,[]);
+  });
+  await step('source errors give relevant guidance and retained data is informational', async () => {
+    const path = join(home, '.claude/skills/uat/SKILL.md'), original = fs.readFileSync(path, 'utf8'), legacy = join(home, '.aios/disabled-mcp.json');
+    try {
+      fs.writeFileSync(path, '---\nname: UAT skill\ndescription: secret-fixture: invalid colon\n---\nBody'); fs.writeFileSync(legacy, '{}');
+      await nav('Skills'); await sync(); const text = await mainText();
+      assert.ok(text.includes('Scan finished with 1 source issue')); assert.ok(text.includes('line 3')); assert.ok(text.includes('Quote text'));
+      assert.ok(!text.includes('narrower folders')); assert.ok(!text.includes('secret-fixture'));
+      await button('Review source issues'); await wait("document.querySelector('main h1')?.textContent==='Overview'");
+      assert.ok((await mainText()).includes('Older AIOS data available'));
+      fs.writeFileSync(path, original); await sync();
+      assert.equal(await js("document.querySelectorAll('main [role=alert]').length"), 0); assert.ok((await mainText()).includes('0 reported source issues'));
+      await nav('MCP servers'); assert.equal(await js("[...document.querySelectorAll('main button')].find(b=>b.textContent==='Capture current configuration').disabled"), false);
+    } finally { fs.writeFileSync(path, original); fs.rmSync(legacy, { force: true }); await sync(); }
+    await nav('Overview'); assert.deepEqual(session.rendererErrors,[]); fs.writeFileSync(output,await session.screenshot());
   });
 }

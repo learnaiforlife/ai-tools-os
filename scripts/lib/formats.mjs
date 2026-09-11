@@ -7,7 +7,15 @@ import { fail } from './storage.mjs';
 export function frontmatter(raw) {
   const match = raw.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!match) return { metadata: {}, body: raw };
-  const metadata = YAML.parse(match[1], { maxAliasCount: 20, uniqueKeys: true });
+  let metadata;
+  try { metadata = YAML.parse(match[1], { maxAliasCount: 20, uniqueKeys: true }); }
+  catch (error) {
+    const line = error.linePos?.[0]?.line;
+    const hint = error.code === 'BLOCK_AS_IMPLICIT_KEY' ? 'Quote text containing a colon followed by a space, or use a YAML block scalar.'
+      : error.code === 'DUPLICATE_KEY' ? 'Each frontmatter field must have a unique name.' : 'Check indentation, quotes and field values.';
+    // Parser messages can contain source text, including private header values.
+    fail('INVALID', `Invalid YAML frontmatter${Number.isInteger(line) ? ` at line ${line + 1}` : ''}. ${hint}`);
+  }
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) fail('INVALID', 'Frontmatter must be a YAML mapping.');
   return { metadata, body: raw.slice(match[0].length) };
 }
@@ -48,7 +56,7 @@ export function editJson(raw, path, value, valueText) {
 export function validate(raw, path, kind) {
   if (/\.(json|toml)$/.test(path)) parseConfig(raw, path);
   else if (/\.(md|mdc)$/.test(path) && (kind !== 'memory' || path.endsWith('.mdc'))) {
-    try { frontmatter(raw); } catch { fail('INVALID', 'Invalid YAML frontmatter. Original file was preserved.'); }
+    try { frontmatter(raw); } catch (error) { fail('INVALID', `${error.message} Original file was preserved.`); }
   }
 }
 export const jsonText = (obj, original = '') => JSON.stringify(obj, null, original.match(/^\{\r?\n([\t ]+)/)?.[1] || 2) + (original.includes('\r\n') ? '\r\n' : '\n');
