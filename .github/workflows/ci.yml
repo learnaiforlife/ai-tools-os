@@ -27,7 +27,6 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: npm --prefix site audit --audit-level=moderate
       - run: npm run dist:mac:local
-      - run: node scripts/test-package.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

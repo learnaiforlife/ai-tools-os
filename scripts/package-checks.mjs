@@ -15,7 +15,14 @@ export function run(command, args) {
 }
 const files = root => fs.readdirSync(root, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(join(root, e.name)) : [join(root, e.name)]);
 
+export function verifyApplicationSignature(app) {
+  // This checks the bundle seal and nested code, including ad-hoc beta builds.
+  // It does not imply Developer ID trust, notarization or Gatekeeper approval.
+  run('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', app]);
+}
+
 export function inspectApplication(app, pkg, arch) {
+  verifyApplicationSignature(app);
   const info = JSON.parse(run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', join(app, 'Contents/Info.plist')]));
   assert.equal(info.CFBundleShortVersionString, pkg.version);
   assert.equal(info.LSMinimumSystemVersion, pkg.build.mac.minimumSystemVersion);
@@ -31,7 +38,7 @@ export function inspectApplication(app, pkg, arch) {
   for (const file of packagedFiles) assert.ok(expected.includes(file.slice(1)), `Stale packaged file: ${file}`);
   const packaged = JSON.parse(extractFile(asar, 'package.json'));
   assert.equal(packaged.version, pkg.version); assert.deepEqual(packaged.dependencies, pkg.dependencies);
-  return { arch, minimumMacOS: info.LSMinimumSystemVersion, architectures, entries: paths.length, comparedSourceFiles: expected.length, asarSha512: digest(fs.readFileSync(asar)) };
+  return { arch, minimumMacOS: info.LSMinimumSystemVersion, architectures, codeSignatureValid: true, entries: paths.length, comparedSourceFiles: expected.length, asarSha512: digest(fs.readFileSync(asar)) };
 }
 
 export function verifyInstallerMetadata(directory, artifacts) {

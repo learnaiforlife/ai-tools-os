@@ -1,6 +1,6 @@
 {
   "name": "ai-tools-os",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "AI Tools OS — a unified, local-first command center for managing AI development resources (skills, MCP servers, memory, config, subagents, commands, external tools).",
   "type": "module",
@@ -11,7 +11,8 @@
     "electron:dev": "node scripts/electron-dev.mjs",
     "electron:start": "npm run build && electron .",
     "dist:mac": "node scripts/release.mjs",
-    "dist:mac:local": "npm run build && electron-builder --mac --arm64 --x64 --publish never --config.mac.identity=null --config.directories.output=release-local && node scripts/release-metadata.mjs release-local",
+    "dist:mac:local": "npm run dist:mac:beta",
+    "dist:mac:beta": "npm run build && electron-builder --mac --arm64 --x64 --publish never --config.mac.identity=- --config.mac.notarize=false --config.directories.output=release-local && node scripts/release-metadata.mjs release-local && node scripts/test-package.mjs release-local",
     "test": "node --test tests/*.test.mjs",
     "test:desktop": "npm run build && electron tests/desktop.mjs",
     "lint": "eslint .",

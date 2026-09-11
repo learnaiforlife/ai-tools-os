@@ -4,13 +4,33 @@ import * as fs from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import YAML from 'yaml';
-import { digest, verifyInstallerMetadata } from '../scripts/package-checks.mjs';
+import { digest, verifyInstallerMetadata, verifyApplicationSignature, run } from '../scripts/package-checks.mjs';
 import siteConfig from '../site/vite.config.js';
 import { packagedSession } from '../scripts/packaged-session.mjs';
 import { writeInstallerMetadata } from '../scripts/release-metadata.mjs';
 import { getReleaseInfo } from '../site/src/release-info.js';
 
 const releaseFixture = () => ({ available: true, channel: 'beta', verification: 'unsigned', version: '1.1.0', minMacOS: '13.0', artifacts: ['arm64', 'x64'].map(arch => ({ name: `app-${arch}.dmg`, arch, size: 100, sha512: digest(Buffer.from(arch)), url: `https://example.test/app-${arch}.dmg` })) });
+test('Mac package validation rejects missing seals, altered resources and altered nested code', { skip: process.platform !== 'darwin' }, t => {
+  const root = fs.mkdtempSync(join(tmpdir(), 'aios-signature-fixture-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const app = join(root, 'Fixture.app');
+  const contents = join(app, 'Contents'), resource = join(contents, 'Resources/data.txt');
+  fs.mkdirSync(join(contents, 'MacOS'), { recursive: true }); fs.mkdirSync(join(contents, 'Resources'));
+  fs.copyFileSync('/bin/echo', join(contents, 'MacOS/Fixture'));
+  fs.writeFileSync(join(contents, 'Info.plist'), '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Fixture</string><key>CFBundleIdentifier</key><string>test.aios.signature</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>');
+  fs.writeFileSync(resource, 'original');
+  assert.throws(() => verifyApplicationSignature(app), /codesign failed/);
+  const helper = join(contents, 'MacOS/Helper'); fs.copyFileSync('/bin/echo', helper);
+  run('/usr/bin/codesign', ['--force', '--sign', '-', helper]);
+  run('/usr/bin/codesign', ['--force', '--sign', '-', app]);
+  verifyApplicationSignature(app);
+  fs.writeFileSync(resource, 'modified');
+  assert.throws(() => verifyApplicationSignature(app), /codesign failed/);
+  fs.writeFileSync(resource, 'original'); verifyApplicationSignature(app);
+  run('/usr/bin/codesign', ['--remove-signature', helper]);
+  assert.throws(() => verifyApplicationSignature(app), /codesign failed/);
+});
 test('beta downloads remain available without claiming Apple signing or notarization', () => {
   const result = getReleaseInfo(releaseFixture());
   assert.equal(result.downloads.length, 2); assert.equal(result.needsApproval, true);
