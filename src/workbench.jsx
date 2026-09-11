@@ -136,31 +136,34 @@ function Settings({ data, run, busy, report, onDirty }) {
   </>;
 }
 function History({ data, busy, report, edit }) {
-  const [history, setHistory] = useState([]), [preview, setPreview] = useState(null);
+  const [history, setHistory] = useState([]), [preview, setPreview] = useState(null), [previewError, setPreviewError] = useState('');
+  const restoreTarget = preview && data.resources.find(r => !r.parked && !r.readonly && r.canonicalPath === preview.path && r.kind !== 'mcp');
   useEffect(() => { let active = true; request('history').then(r => { if (active) setHistory(r.history); }).catch(report); return () => { active = false; }; }, [data.syncedAt, report]);
   return <><p>The latest 100 transactions retain private backups. Restoring opens a draft so you can compare it with the current file before saving. Parked resources are restored from their inventory page.</p>
     {!history.length && <Notice>No transactions recorded.</Notice>}
     {history.map(entry => <section className="wb-card" key={entry.id}><h3>{entry.label} <span className="wb-muted">{entry.status}</span></h3><p>{new Date(entry.at).toLocaleString()}</p>
-      {entry.files.map(file => <div className="wb-row" key={file.path}><code>{file.path}</code><Button disabled={busy} onClick={async () => { try { setPreview(await request('history.read', { id: entry.id, path: file.path })); } catch (e) { report(e); } }}>Inspect previous version</Button></div>)}
+      {entry.files.map(file => <div className="wb-row" key={file.path}><code>{file.path}</code><Button disabled={busy} onClick={async () => { try { setPreviewError(''); setPreview(await request('history.read', { id: entry.id, path: file.path })); } catch (e) { report(e); } }}>Inspect previous version</Button></div>)}
       {entry.moves.map(move => <p className="wb-path" key={move.from}>{move.from} → {move.to}</p>)}
     </section>)}
     {preview && <Dialog title="Previous version" close={() => setPreview(null)} wide><p className="wb-path">{preview.path}</p><textarea className="wb-editor" aria-label="Previous file content" readOnly value={preview.content} />
-      <Button onClick={async () => { try { await copyText(preview.content); } catch (e) { report(e); } }}>Copy previous content</Button>
-      <Button onClick={() => { const resource = data.resources.find(r => r.canonicalPath === preview.path && r.kind !== 'mcp'); if (!resource) report(Error('The original file is no longer in the inventory. Add its folder or restore the parked resource first.')); else { setPreview(null); edit(resource, preview.content); } }}>Restore as a draft for review</Button>
+      {previewError && <Notice error>{previewError}</Notice>}
+      {!restoreTarget && <Notice>Draft restoration requires a writable live resource in the inventory. Application-state backups are available for inspection; parked resources must be restored from their inventory page first.</Notice>}
+      <Button onClick={async () => { try { await copyText(preview.content); } catch (e) { setPreviewError(e.message); } }}>Copy previous content</Button>
+      <Button disabled={!restoreTarget} onClick={() => { setPreview(null); edit(restoreTarget, preview.content); }}>Restore as a draft for review</Button>
     </Dialog>}
   </>;
 }
-function Statusline({ run, report, close }) {
-  const [preview, setPreview] = useState(null), [busy, setBusy] = useState(false), [confirmed, setConfirmed] = useState(false);
-  useEffect(() => { let active = true; request('statusline.preview').then(p => { if (active) setPreview(p); }).catch(report); return () => { active = false; }; }, [report]);
-  return <Dialog title="Claude Code statusline" close={() => { if (!busy) close(); }} wide>{preview ? <>
+function Statusline({ run, close }) {
+  const [preview, setPreview] = useState(null), [busy, setBusy] = useState(false), [confirmed, setConfirmed] = useState(false), [error, setError] = useState(''), [reload, setReload] = useState(0);
+  useEffect(() => { let active = true; setPreview(null); setError(''); setConfirmed(false); request('statusline.preview').then(p => { if (active) setPreview(p); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [reload]);
+  return <Dialog title="Claude Code statusline" close={() => { if (!busy) close(); }} wide>{error && <Notice error>{error}</Notice>}{preview ? <>
     <p className="wb-path">{preview.scriptPath}</p><p>Install a local statusline showing the model, working directory and context percentage supplied by Claude Code. Both the script and settings are backed up together.</p>
     <details><summary>Current settings</summary><pre>{preview.settings.content || '(no settings file)'}</pre></details>
     <details><summary>Current script</summary><pre>{preview.script.content || '(no script)'}</pre></details>
     <details open><summary>Generated script</summary><pre>{preview.generated}</pre></details>
     <label className="wb-check"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Replace the current statusline with this script.</label>
-    <Button primary disabled={!confirmed || busy} onClick={async () => { setBusy(true); try { await run('statusline.install', { settingsRevision: preview.settings.revision, scriptRevision: preview.script.revision }); close(); } catch (e) { report(e); } finally { setBusy(false); } }}>Install statusline</Button>
-  </> : <p>Loading existing files…</p>}</Dialog>;
+    <Button primary disabled={!confirmed || busy || !!error} onClick={async () => { setBusy(true); try { await run('statusline.install', { settingsRevision: preview.settings.revision, scriptRevision: preview.script.revision }); close(); } catch (e) { setError(e.message); } finally { setBusy(false); } }}>Install statusline</Button>
+  </> : !error && <p>Loading existing files…</p>}{error && <Button disabled={busy} onClick={() => setReload(n => n + 1)}>Reload preview</Button>}</Dialog>;
 }
 
 export function Workbench() {
@@ -223,7 +226,7 @@ export function Workbench() {
   else if (page === 'settings') screen = <Settings data={data} run={run} busy={busy} report={report} onDirty={onSettingsDirty} />;
   else if (page === 'history') screen = <History data={data} run={run} busy={busy} report={report} edit={edit} />;
   else if (page === 'security') screen = <><Notice>Configuration review only. AIOS cannot verify a server’s behavior or enforce a provider sandbox. Credential presence and source permissions below are direct observations; they are not a safety score.</Notice>
-    {resourceList(resources.filter(r => r.kind === 'mcp'))}<section className="wb-card"><h2>File permissions</h2>{resources.filter(r => r.kind !== 'mcp').map(r => <div className="wb-row" key={r.id}><code>{r.path}</code><span>{r.mode != null ? '0' + r.mode.toString(8) : 'Unavailable'}{r.mode & 0o022 ? ' · writable by group/others' : ''}</span></div>)}</section></>;
+    {resourceList(resources.filter(r => r.kind === 'mcp'))}<section className="wb-card"><h2>File permissions</h2>{resources.filter(r => r.kind !== 'mcp').map(r => <div className="wb-row" key={r.id + (r.parked ? '-parked' : '-live')}><code>{r.path}{r.parked ? ' (parked copy)' : ''}</code><span>{r.mode != null ? '0' + r.mode.toString(8) : 'Unavailable'}{r.mode & 0o022 ? ' · writable by group/others' : ''}</span></div>)}</section></>;
   else if (page === 'tokens') { const estimate = contextEstimate(resources); screen = <><section className="wb-card"><h2>{estimate.tokens.toLocaleString()} estimated text tokens</h2><p>Character count ÷ 4, rounded up per file. {estimate.files.length} distinct readable files; files shared by providers are counted once. This measures selected files, not actual model usage, billing or startup context. Providers load different subsets depending on the task, project and trust settings. MCP schemas and remote resources are not measured.</p></section>{resourceList(estimate.files)}</>; }
   else if (page === 'prompts') screen = <><Button primary onClick={() => setModal({ type: 'prompt' })}>New prompt</Button>{!data.prompts.length && <Notice>Your local prompt library is empty.</Notice>}{data.prompts.filter(p => !search || (p.name + p.content).toLowerCase().includes(search.toLowerCase())).map(p => <section className="wb-card" key={p.id}><h2>{p.name}{p.favorite ? ' ★' : ''}</h2><p className="wb-preview">{p.content}</p><div className="wb-actions"><Button onClick={() => setModal({ type: 'prompt', prompt: p })}>Edit / use</Button><Button disabled={busy} onClick={() => { if (window.confirm(`Delete prompt ${p.name}?`)) void run('prompts.delete', { id: p.id }).catch(() => {}); }}>Delete prompt</Button></div></section>)}</>;
   else if (page === 'tools') screen = <Tools report={report} />;

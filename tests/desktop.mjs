@@ -1,6 +1,6 @@
 // Actual Electron main, preload, worker and production React bundle. Every tool
 // resource and all application state are redirected into a temporary fixture.
-import { app, BrowserWindow, clipboard } from 'electron';
+import { app, BrowserWindow, clipboard, dialog } from 'electron';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const base = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'aios-desktop-test-'))), home = join(base, 'user'), fixtureApp = join(base, 'app');
+const base = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'aios-desktop-test-'))), home = join(base, 'User space % ü'), fixtureApp = join(base, 'AI Tools OS space % ü');
 const write = (path, content) => { fs.mkdirSync(dirname(path), { recursive: true }); fs.writeFileSync(path, content); };
 const userSkill = join(home, '.claude/skills/user/SKILL.md');
 write(userSkill, '---\nname: User skill\ndescription: Fixture\n---\n' + 'Complete content\n'.repeat(400));
@@ -16,9 +16,9 @@ write(join(home, 'Documents/project/.claude/skills/project/SKILL.md'), '---\nnam
 write(join(home, '.claude/settings.json'), '{"model":"fixture-model","permissions":{"allow":["Read"]}}');
 write(join(home, '.claude.json'), '{"mcpServers":{"fixture-server":{"command":"fixture-only","args":["value with spaces"],"env":{"TOKEN":"fixture-secret"}}}}');
 write(join(fixtureApp, 'electron/main.mjs'), fs.readFileSync(join(repo, 'electron/main.mjs'), 'utf8').replace('workerData: { cancelBuffer }', `workerData: { cancelBuffer, fixtureHome: ${JSON.stringify(home)} }`));
-for (const file of ['worker.mjs', 'preload.cjs']) write(join(fixtureApp, 'electron', file), fs.readFileSync(join(repo, 'electron', file)));
+for (const file of fs.readdirSync(join(repo, 'electron')).filter(file => file !== 'main.mjs')) write(join(fixtureApp, 'electron', file), fs.readFileSync(join(repo, 'electron', file)));
 fs.mkdirSync(join(fixtureApp, 'scripts')); fs.symlinkSync(join(repo, 'scripts/lib'), join(fixtureApp, 'scripts/lib'));
-fs.symlinkSync(join(repo, 'dist'), join(fixtureApp, 'dist')); fs.symlinkSync(join(repo, 'node_modules'), join(fixtureApp, 'node_modules'));
+fs.cpSync(join(repo, 'dist'), join(fixtureApp, 'dist'), { recursive: true }); fs.symlinkSync(join(repo, 'node_modules'), join(fixtureApp, 'node_modules'));
 app.setPath('userData', join(base, 'electron-data')); app.setPath('sessionData', join(base, 'electron-session')); app.setPath('logs', join(base, 'logs'));
 app.commandLine.appendSwitch('disable-gpu');
 let win, mainModule;
@@ -26,6 +26,12 @@ let copied;
 // Exercise the real IPC route without modifying the user's system clipboard.
 const nativeCopy = clipboard.writeText;
 clipboard.writeText = value => { copied = value; };
+const nativeMessageBox = dialog.showMessageBox, displayRecovery = [];
+dialog.showMessageBox = async (_window, options) => {
+  displayRecovery.push(options);
+  fs.copyFileSync(join(repo, 'dist/index.html'), join(fixtureApp, 'dist/index.html'));
+  return { response: 0, checkboxChecked: false };
+};
 const errors = [], results = [];
 app.on('browser-window-created', (_, window) => {
   win = window; window.on('show', () => window.hide());
@@ -176,6 +182,15 @@ async function run() {
       await nav('History & recovery'); await waitFor("document.querySelector('main').innerText.includes('Inspect previous version')");
       assert.equal(await js("[...document.querySelectorAll('button')].filter(b=>!b.textContent.trim()&&!b.getAttribute('aria-label')).length"), 0);
     });
+    await probe('missing interface files produce a recovery dialog and reload successfully after repair', async () => {
+      fs.writeFileSync(join(fixtureApp, 'dist/index.html'), '<html><body>Missing application entry point</body></html>');
+      win.reload();
+      const deadline = Date.now() + 15000;
+      while (!displayRecovery.length && Date.now() < deadline) await sleep(50);
+      assert.equal(displayRecovery[0]?.message, 'AIOS could not display its interface');
+      await waitFor("document.querySelector('.wb-status')?.textContent.includes('Inventory refreshed')");
+    });
+    await probe('no unexpected renderer errors occurred during desktop acceptance', async () => { assert.deepEqual(errors, []); });
     await nav('Overview'); await idle();
     await waitFor("!document.querySelector('dialog')");
     win.removeAllListeners('show'); win.showInactive(); await sleep(300);
@@ -189,6 +204,7 @@ async function run() {
   }
   finally {
     clipboard.writeText = nativeCopy;
+    dialog.showMessageBox = nativeMessageBox;
     fs.mkdirSync(join(repo, 'test-results'), { recursive: true });
     fs.writeFileSync(join(repo, 'test-results/desktop.json'), JSON.stringify({ results, rendererErrors: errors }, null, 2));
     for (const window of BrowserWindow.getAllWindows()) window.destroy();

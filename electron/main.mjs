@@ -1,8 +1,8 @@
-import { app, BrowserWindow, Menu, dialog, clipboard, ipcMain, protocol, net, session } from 'electron';
-import { existsSync, statSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { app, BrowserWindow, Menu, dialog, clipboard, ipcMain, protocol, session } from 'electron';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
+import { assetResponse } from './assets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), DIST = join(ROOT, 'dist');
 const DEV_URL = !app.isPackaged ? process.env.AIOS_DEV_SERVER_URL : null;
@@ -12,7 +12,6 @@ const trusted = url => {
   try { const u = new URL(url); return DEV_URL ? u.origin === new URL(DEV_URL).origin : u.protocol === 'aios:' && u.hostname === 'app'; }
   catch { return false; }
 };
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'";
 protocol.registerSchemesAsPrivileged([{ scheme: 'aios', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 let worker, workerFailure, serial = 0, busy = false, currentOperation, quitting = false;
 const pending = new Map(), cancelBuffer = new SharedArrayBuffer(4), cancellation = new Int32Array(cancelBuffer);
@@ -36,6 +35,26 @@ function failWorker(error) {
 async function createWindow() {
   const win = new BrowserWindow({ width: 1440, height: 960, minWidth: 720, minHeight: 520, title: 'AI Tools OS', backgroundColor: '#0c0d11', show: false,
     webPreferences: { preload: join(ROOT, 'electron/preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
+  let startupTimer, reporting = false;
+  const showDisplayFailure = async detail => {
+    if (win.isDestroyed() || reporting || quitting) return;
+    reporting = true; win.show();
+    try {
+      const answer = await dialog.showMessageBox(win, { type: 'error', buttons: ['Reload application', 'Close window'], defaultId: 0, cancelId: 1,
+        message: 'AIOS could not display its interface', detail: `${detail}\nYour configuration files have not been changed by this display failure.` });
+      if (!win.isDestroyed()) { if (answer.response === 0) win.reload(); else win.close(); }
+    } finally { reporting = false; }
+  };
+  win.webContents.on('did-start-loading', () => {
+    clearTimeout(startupTimer);
+    startupTimer = setTimeout(async () => {
+      if (win.isDestroyed()) return;
+      const rendered = await win.webContents.executeJavaScript("!!document.querySelector('.wb-app, [data-aios-recovery]')").catch(() => false);
+      if (!rendered) void showDisplayFailure('The local application files did not finish loading. Reload, or reinstall the current download if this continues.');
+    }, 10000);
+  });
+  win.on('closed', () => clearTimeout(startupTimer));
+  win.webContents.on('render-process-gone', (_event, details) => void showDisplayFailure(`The display process stopped (${details.reason}).`));
   win.once('ready-to-show', () => win.show());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event, url) => { if (!trusted(url)) event.preventDefault(); });
@@ -53,20 +72,11 @@ async function start() {
   if (!app.requestSingleInstanceLock()) { app.quit(); return; }
   app.on('second-instance', () => { const win = BrowserWindow.getAllWindows()[0]; if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   await app.whenReady();
-  protocol.handle('aios', async request => {
-    try {
-      const url = new URL(request.url);
-      if (url.hostname !== 'app' || request.method !== 'GET') return new Response('Forbidden', { status: 403 });
-      const path = resolve(DIST, '.' + decodeURIComponent(url.pathname));
-      if (!path.startsWith(DIST + sep) || !existsSync(path) || !statSync(path).isFile()) return new Response('Not found', { status: 404 });
-      const response = await net.fetch(pathToFileURL(path).href);
-      response.headers.set('Content-Security-Policy', CSP); response.headers.set('X-Content-Type-Options', 'nosniff'); return response;
-    } catch { return new Response('Invalid request', { status: 400 }); }
-  });
+  protocol.handle('aios', request => assetResponse(request, DIST));
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-    const allowed = trusted(details.url) || details.url.startsWith('devtools://') || details.url.startsWith('file://' + DIST + '/') || (DEV_URL && details.url.startsWith(DEV_URL.replace('http:', 'ws:')));
+    const allowed = trusted(details.url) || details.url.startsWith('devtools://') || (DEV_URL && details.url.startsWith(DEV_URL.replace('http:', 'ws:')));
     callback({ cancel: !allowed });
   });
   worker = new Worker(new URL('./worker.mjs', import.meta.url), { workerData: { cancelBuffer } });

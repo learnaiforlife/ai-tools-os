@@ -18,6 +18,7 @@ export async function packagedSession({ exe, home, userData, cwd }) {
     cwd, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '', socket, ended = false, startupError, serial = 0;
+  const rendererErrors = [];
   const pending = new Map();
   const exited = new Promise(resolveExit => child.once('exit', () => { ended = true; resolveExit(); }));
   child.on('error', error => { startupError = error; });
@@ -57,17 +58,34 @@ export async function packagedSession({ exe, home, userData, cwd }) {
     socket.addEventListener('message', event => {
       const message = JSON.parse(String(event.data)), entry = pending.get(message.id);
       if (entry) { pending.delete(message.id); entry.resolve(message); }
+      if (message.method === 'Runtime.exceptionThrown') rendererErrors.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
+      if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') rendererErrors.push(message.params.entry.text);
+      if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') rendererErrors.push(message.params.args.map(a => a.value || a.description).join(' '));
     });
-    const evaluate = async expression => {
+    const command = async (method, params = {}) => {
       const id = ++serial;
       const answer = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
       try {
-        socket.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }));
+        socket.send(JSON.stringify({ id, method, params }));
         const response = await deadline(answer, 20000, 'Packaged evaluation timed out.');
-        if (response.error || response.result.exceptionDetails) throw Error(JSON.stringify(response.error || response.result.exceptionDetails));
-        return response.result.result.value;
+        if (response.error) throw Error(JSON.stringify(response.error));
+        return response.result;
       } finally { pending.delete(id); }
     };
+    const evaluate = async expression => {
+      const response = await command('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+      if (response.exceptionDetails) throw Error(JSON.stringify(response.exceptionDetails));
+      return response.result.value;
+    };
+    await command('Runtime.enable'); await command('Log.enable');
+    let rendered = false, view;
+    for (let n = 0; n < 150; n++) {
+      view = await evaluate("({ready:document.readyState,root:!!document.querySelector('#root'),ui:!!document.querySelector('.wb-app main h1'),styled:!!document.querySelector('.wb-app')&&getComputedStyle(document.querySelector('.wb-app')).display==='grid',text:document.body?.innerText.slice(0,300)||''})");
+      if (view.ui && view.styled) { rendered = true; break; }
+      if (n >= 5 && view.ready === 'complete' && !view.root && view.text) throw Error('Packaged interface failed to load: ' + view.text);
+      await pause(100);
+    }
+    if (!rendered) throw Error('Packaged interface did not render its styled navigation and main view: ' + view?.text);
     let inventory;
     for (let n = 0; n < 100; n++) {
       inventory = await evaluate("window.aios?.request('inventory',{})");
@@ -76,6 +94,9 @@ export async function packagedSession({ exe, home, userData, cwd }) {
     }
     if (!inventory?.ok) throw Error('Packaged inventory failed: ' + JSON.stringify(inventory));
     if (inventory.providerPaths.claude !== join(home, '.claude') || inventory.providerPaths.codex !== join(home, '.codex') || inventory.providerPaths.claudeJson !== join(home, '.claude.json')) throw Error('Packaged fixture isolation failed; mutations are forbidden.');
-    return { inventory, evaluate, close, request: (op, args = {}) => evaluate(`window.aios.request(${JSON.stringify(op)},${JSON.stringify(args)})`) };
+    return { inventory, evaluate, close, rendered, rendererErrors,
+      screenshot: async () => Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'),
+      viewport: (width, height) => command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }),
+      request: (op, args = {}) => evaluate(`window.aios.request(${JSON.stringify(op)},${JSON.stringify(args)})`) };
   } catch (error) { await close(); throw error; }
 }

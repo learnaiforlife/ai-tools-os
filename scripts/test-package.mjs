@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { inspectApplication, inspectDmg, verifyInstallerMetadata, digest as hash, run } from './package-checks.mjs';
 import { packagedSession } from './packaged-session.mjs';
+import { seedUat, runPackagedUat } from '../tests/packaged-uat.mjs';
 
 const directory = resolve(process.argv[2] || 'release-local'), pkg = JSON.parse(fs.readFileSync('package.json'));
 const testArch = process.argv[3] || process.arch;
 assert.ok(['arm64', 'x64'].includes(testArch), 'Select arm64 or x64 for the packaged runtime test.');
-const results = { version: pkg.version, artifacts: [], bundle: [], smoke: null };
+const results = { version: pkg.version, artifacts: [], bundle: [], smoke: null, uat: [] };
 for (const arch of ['arm64', 'x64']) {
   const app = join(directory, arch === 'arm64' ? 'mac-arm64' : 'mac', 'AI Tools OS.app');
   const record = inspectApplication(app, pkg, arch);
@@ -28,6 +29,7 @@ console.log('PASS both architectures, ZIP/DMG contents, source equality and fina
 const base = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'aios-package-test-'))), home = join(base, 'user'), userData = join(base, 'chromium');
 const path = join(home, '.claude/skills/packaged/SKILL.md'); fs.mkdirSync(dirname(path), { recursive: true }); fs.writeFileSync(path, 'Packaged fixture');
 fs.mkdirSync(join(home, 'Documents'), { recursive: true }); fs.mkdirSync(userData);
+seedUat(home);
 const applications = join(base, 'Applications'), installed = join(applications, pkg.build.productName + '.app'); fs.mkdirSync(applications);
 const exe = join(installed, 'Contents/MacOS', pkg.build.productName);
 const install = () => run('/usr/bin/ditto', ['-x', '-k', join(directory, `AI-Tools-OS-${pkg.version}-${testArch}.zip`), applications]);
@@ -35,6 +37,7 @@ let session;
 const call = async (operation, args = {}) => { const result = await session.request(operation, args); assert.equal(result.ok, true, JSON.stringify(result)); return result; };
 try {
   install(); session = await packagedSession({ exe, home, userData, cwd: base });
+  await runPackagedUat({ session, home, results: results.uat, output: resolve('test-results', `packaged-uat-${testArch}.png`) });
   const resource = session.inventory.resources.find(r => r.path === path); assert.ok(resource, 'Fixture source missing');
   await call('resource.write', { id: resource.id, revision: resource.revision, content: 'saved from packaged app' });
   assert.equal(fs.readFileSync(path, 'utf8'), 'saved from packaged app');
@@ -58,7 +61,7 @@ try {
   assert.equal(fs.readFileSync(path, 'utf8'), 'saved from packaged app');
   assert.ok((await call('history')).history.some(h => h.files.some(f => f.path === path)));
   results.smoke = { arch: testArch, hostArch: process.arch, translated: testArch !== process.arch, origin: 'aios://app', fixtureIsolated: true,
-    nativeWriteVerified: true, installedFromZip: true, reinstallVerified: true, retained: ['native content', 'preferences', 'prompts', 'parked resources', 'history'] };
+    interfaceRendered: session.rendered, rendererErrors: session.rendererErrors, nativeWriteVerified: true, installedFromZip: true, reinstallVerified: true, retained: ['native content', 'preferences', 'prompts', 'parked resources', 'history'] };
   console.log(`PASS ${testArch} installed app, native save and reinstall persistence`);
 } finally {
   await session?.close(); fs.rmSync(base, { recursive: true, force: true });

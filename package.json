@@ -1,8 +1,8 @@
 {
   "name": "ai-tools-os",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "private": true,
-  "description": "AI Tools OS — a unified, local-first command center for managing AI development resources (skills, MCP servers, memory, config, subagents, commands, external tools).",
+  "description": "AI Tools OS \u2014 a unified, local-first command center for managing AI development resources (skills, MCP servers, memory, config, subagents, commands, external tools).",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
