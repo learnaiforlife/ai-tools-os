@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createService } from '../scripts/lib/service.mjs';
 import { handleAiosApiRequest, aiosBridge } from '../scripts/aios-bridge.mjs';
 import { redactConfig, copyText } from '../src/api.js';
-import { hash } from '../scripts/lib/storage.mjs';
+import { hash, readText, MAX_BYTES } from '../scripts/lib/storage.mjs';
 
 const fixture = t => {
   const home = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'aios-boundary-')));
@@ -128,6 +129,24 @@ test('invalid UTF-8 is rejected without replacing original bytes', t => {
   const f = fixture(t), path = f.put('.claude/CLAUDE.md', Buffer.from([0xff, 0xfe, 0x00]));
   const inv = f.call('inventory'); assert.ok(inv.issues.some(i => i.code === 'ENCODING'));
   assert.deepEqual(fs.readFileSync(path), Buffer.from([0xff, 0xfe, 0x00]));
+});
+test('special native files cannot block discovery or text reads', t => {
+  const f = fixture(t), path = join(f.home, '.claude/CLAUDE.md');
+  fs.mkdirSync(dirname(path)); execFileSync('mkfifo', [path]);
+  // A separate process with a deadline makes the former blocking-open failure
+  // observable without hanging the entire test runner.
+  const result = execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import { createService } from ${JSON.stringify(new URL('../scripts/lib/service.mjs', import.meta.url).href)};
+    const result = createService({home:process.argv[1],env:{},managedRoots:[]}).request('inventory');
+    process.stdout.write(JSON.stringify(result));`, f.home], { timeout: 4000, encoding: 'utf8' });
+  const inventory = JSON.parse(result);
+  assert.equal(inventory.ok, true); assert.ok(inventory.issues.some(i => i.path === path && i.code === 'NOT_FILE'));
+  assert.throws(() => readText(path), e => e.code === 'NOT_FILE'); assert.ok(fs.lstatSync(path).isFIFO());
+});
+test('text reads accept the size boundary and reject larger native files', t => {
+  const f = fixture(t), path = f.put('.claude/CLAUDE.md', 'a'.repeat(MAX_BYTES));
+  assert.equal(readText(path).content.length, MAX_BYTES);
+  fs.appendFileSync(path, 'b'); assert.throws(() => readText(path), e => e.code === 'TOO_LARGE');
 });
 test('statusline preview and install cannot escape through an existing link', t => {
   const f = fixture(t), target = f.put('private/script.sh', 'private');

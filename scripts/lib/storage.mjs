@@ -18,13 +18,24 @@ export function canonical(path) {
   return join(canonical(dirname(path)), path.slice(dirname(path).length + 1));
 }
 export function readText(path) {
-  const fd = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  // Reject special files before opening: a FIFO can otherwise block forever
+  // before fstat, preventing even scan cancellation. NONBLOCK closes the race
+  // where a regular file is replaced with a FIFO between lstat and open.
+  if (!fs.lstatSync(path).isFile()) fail('NOT_FILE', 'The selected path is not a regular file.');
+  const fd = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   try {
     const st = fs.fstatSync(fd);
     if (!st.isFile()) fail('NOT_FILE', 'The selected path is not a regular file.');
     if (st.size > MAX_BYTES) fail('TOO_LARGE', 'Files larger than 2 MiB cannot be edited.');
-    const bytes = fs.readFileSync(fd);
-    if (bytes.length > MAX_BYTES) fail('TOO_LARGE', 'File grew beyond the 2 MiB limit.');
+    const chunks = []; let length = 0;
+    while (length <= MAX_BYTES) {
+      const chunk = Buffer.allocUnsafe(Math.min(65536, MAX_BYTES + 1 - length));
+      const count = fs.readSync(fd, chunk, 0, chunk.length, null);
+      if (!count) break;
+      chunks.push(chunk.subarray(0, count)); length += count;
+    }
+    if (length > MAX_BYTES) fail('TOO_LARGE', 'File grew beyond the 2 MiB limit.');
+    const bytes = Buffer.concat(chunks, length);
     let content;
     try { content = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes); }
     catch { fail('ENCODING', 'Only valid UTF-8 text files can be edited. Original bytes were preserved.'); }

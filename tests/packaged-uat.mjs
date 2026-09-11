@@ -1,6 +1,7 @@
 // Acceptance checks operate the real packaged React UI. Filesystem assertions
 // verify outcomes only inside the caller's disposable home.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import { join, dirname } from 'node:path';
 
@@ -195,6 +196,14 @@ export async function runPackagedUat({ session, home, results, output }) {
     await session.viewport(720,520); await nav('Skills'); await inspect('UAT skill'); await content();
     assert.ok(await js("document.documentElement.scrollWidth<=innerWidth && document.querySelector('dialog').getBoundingClientRect().right<=innerWidth"));
     fs.mkdirSync(dirname(output),{recursive:true});fs.writeFileSync(output.replace('.png','-small.png'),await session.screenshot()); await close(); await session.viewport(1440,960);
+  });
+  await step('unsupported native files report an issue without hanging the scan', async () => {
+    const path = join(home, '.claude/CLAUDE.md'); execFileSync('/usr/bin/mkfifo', [path]);
+    try {
+      await nav('Overview'); await sync(); assert.ok((await mainText()).includes('NOT_FILE'));
+      assert.ok(fs.lstatSync(path).isFIFO());
+    } finally { fs.unlinkSync(path); await sync(); }
+    assert.ok(!(await mainText()).includes('NOT_FILE'));
   });
   await step('context estimates and actual executable discovery render without errors', async () => {
     await nav('Context estimates'); assert.ok((await mainText()).includes('estimated text tokens'));
