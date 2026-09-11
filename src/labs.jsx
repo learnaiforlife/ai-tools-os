@@ -135,7 +135,7 @@ function MoveSection({ source, section, projects, run, close }) {
   </Dialog>;
 }
 
-function MemoryForm({ resources, projects, draft, change, act, started, run, evaluate }) {
+function MemoryForm({ resources, projects, draft, change, act, started, run, evaluate, busy }) {
   const [review, setReview] = useState(null), [changes, setChanges] = useState(null), [move, setMove] = useState(null);
   const files = resources.filter(r => r.kind === 'memory' && !r.parked && !r.error).filter((r, i, all) => all.findIndex(a => (a.canonicalPath || a.path) === (r.canonicalPath || r.path)) === i);
   const ids = (draft.ids || []).filter(id => files.some(f => f.id === id)), config = draft.settings || defaultSettings;
@@ -146,7 +146,7 @@ function MemoryForm({ resources, projects, draft, change, act, started, run, eva
     {!files.length && <Notice>No readable memory files match the current filters. Add a project folder in Settings or broaden the scope.</Notice>}
     <div className="wb-form-grid"><Field label="Length guidance (lines)"><input aria-label="Memory line guidance" type="number" min="20" max="5000" value={draft.maxLines ?? 500} onChange={e => set('maxLines', Number(e.target.value))} /></Field>
       <Field label="Project for scope suggestions"><select aria-label="Memory review project" value={draft.project || ''} onChange={e => set('project', e.target.value)}><option value="">No project selected</option>{projects.map(p => <option key={p}>{p}</option>)}</select></Field></div>
-    <Button primary disabled={!ids.length} onClick={() => act(async () => { const r = await lab('memory.check', { ids, maxLines: draft.maxLines ?? 500, project: draft.project || '' }); setReview(r.review); })}>Run local checks</Button>
+    <Button primary disabled={!ids.length || busy} onClick={() => act(async () => { setReview(null); const r = await lab('memory.check', { ids, maxLines: draft.maxLines ?? 500, project: draft.project || '' }); setReview(r.review); })}>Run local checks</Button>
     <details><summary>AI review and rewrite options</summary><Settings value={config} change={v => set('settings', v)} /><Field label="Rewrite guidance"><textarea aria-label="Memory rewrite guidance" value={draft.feedback || ''} onChange={e => set('feedback', e.target.value)} /></Field><div className="wb-actions">
       <Button disabled={!ids.length} onClick={() => act(async () => started((await lab('memory.ai', { ids, settings: config })).job.id))}>Run AI review</Button>
       <Button disabled={ids.length !== 1} onClick={() => act(async () => started((await lab('proposal', { id: ids[0], settings: config, feedback: draft.feedback || '' })).job.id))}>Propose rewrite of selected file</Button>
@@ -159,7 +159,7 @@ function MemoryForm({ resources, projects, draft, change, act, started, run, eva
       </article>)}
       {review.documents.map(source => <details key={source.id}><summary>{source.path} · {source.metrics.lines} lines</summary><pre>{source.content}</pre>{source.scope === 'user' && !source.readonly && source.sections.map(s => <div className="wb-row" key={s.start}><span>{s.title} · lines {s.line}–{s.endLine}</span><Button onClick={() => setMove({ source, section: s })}>Move section</Button></div>)}</details>)}
     </section>}
-    {changes && <Changes {...changes} run={run} close={() => setChanges(null)} />}
+    {changes && <Changes {...changes} run={async (...args) => { await run(...args); setReview(null); }} close={() => setChanges(null)} />}
     {move && <MoveSection {...move} projects={projects} run={run} close={() => { setMove(null); setReview(null); }} />}
   </>;
 }
@@ -186,7 +186,7 @@ export function Labs({ page, data, resources, run, jobsState, drafts, setDrafts,
       <p className="wb-muted">PDF, Word, PowerPoint, Excel, CSV, HTML, text, JSON, XML, EPUB, Outlook messages and notebooks. Scanned images, audio and video require additional OCR/transcription and are not part of local document extraction.</p>
       <FileSelection files={draft.files || []} change={files => change({ ...draft, files })} act={act} />
       <div className="wb-actions"><Button primary disabled={busy || !draft.files?.length} onClick={() => act(async () => started((await lab('convert', { tokens: draft.files.map(f => f.token) })).job.id))}>Convert to Markdown</Button><Button disabled={busy || converter?.installed} onClick={() => act(async () => started((await lab('install')).job.id))}>Set up converter</Button></div>
-    </section> : page === 'memory-review' ? <MemoryForm resources={resources} projects={data.projects} draft={draft} change={change} act={act} started={started} run={run} evaluate={evaluate} /> : <SkillForm resources={resources} draft={draft} change={change} act={act} started={started} job={job} />}
+    </section> : page === 'memory-review' ? <MemoryForm resources={resources} projects={data.projects} draft={draft} change={change} act={act} started={started} run={run} evaluate={evaluate} busy={busy} /> : <SkillForm resources={resources} draft={draft} change={change} act={act} started={started} job={job} />}
     <section className="wb-card"><h2>Run history</h2>{!jobsState.jobs.some(j => kinds.includes(j.kind)) && <p>No runs yet.</p>}{jobsState.jobs.filter(j => kinds.includes(j.kind)).map(j => <div className="wb-row" key={j.id}><Button onClick={() => setSelected(j.id)}>{j.label} · {j.status}</Button><span>{new Date(j.createdAt).toLocaleString()}</span>{terminal(j.status) && <Button onClick={() => { if (window.confirm('Delete this run and its saved input/output copies? Installed resources will remain unchanged.')) act(async () => { await lab('delete', { id: j.id }); if (selected === j.id) setSelected(null); }); }}>Delete run</Button>}</div>)}</section>
     {job && <RunResult key={job.id} job={job} act={act} run={run} started={started} onCandidate={(j, candidate) => { setDrafts(prev => ({ ...prev, 'skill-lab': { source: j.source, candidate, suite: JSON.stringify({ evals: j.suite || [] }, null, 2), mode: j.mode || 'evaluate', settings: j.settings, feedback: j.feedback || '' } })); navigate('skill-lab'); }} />}
   </div>;

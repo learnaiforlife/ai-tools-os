@@ -45,6 +45,7 @@ export async function runLabUat({ evaluate: js, home, screenshot, output, probe 
     await button('Review removal'); await wait("!!document.querySelector('dialog .wb-check input')"); assert.equal(await js("document.querySelector('dialog button.primary').disabled"), true);
     await js("document.querySelector('dialog .wb-check input').click()"); await button('Apply reviewed changes'); await wait("!document.querySelector('dialog')");
     assert.equal((fs.readFileSync(join(home, '.claude/CLAUDE.md'), 'utf8').match(/Always run/g) || []).length, 1);
+    assert.equal(await js("document.querySelector('main').innerText.includes('Local review results')"), false, 'Applying a review must invalidate the previous source offsets and findings');
   });
   await probe('Memory Review moves one section with a two-file comparison', async () => {
     await button('Run local checks'); await wait("!!document.querySelector('.lab-workspace details pre')");
