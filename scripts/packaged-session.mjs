@@ -11,7 +11,7 @@ async function deadline(promise, ms, message) {
 // Test-only CDP session, using an ephemeral loopback port and disposable HOME.
 // The caller must verify the returned provider paths before any mutation.
 export async function packagedSession({ exe, home, userData, cwd }) {
-  const env = { ...process.env, HOME: home };
+  const env = { ...process.env, HOME: home, PATH: join(home, '.local/bin') + ':' + (process.env.PATH || '/usr/bin:/bin') };
   for (const key of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'AIOS_DEV_SERVER_URL', 'ELECTRON_RUN_AS_NODE']) delete env[key];
   const child = spawn(exe, [`--user-data-dir=${userData}`, '--remote-debugging-port=0', '--disable-gpu'], {
     env,

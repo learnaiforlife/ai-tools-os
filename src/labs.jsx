@@ -98,7 +98,7 @@ function TestBuilder({ suite, mode, change, act }) {
   </details>;
 }
 
-function SkillForm({ resources, draft, change, act, started }) {
+function SkillForm({ resources, draft, change, act, started, job }) {
   const [loading, setLoading] = useState(false);
   const source = draft.source, config = draft.settings || defaultSettings, mode = draft.mode || 'evaluate', suite = draft.suite || '{"evals":[]}';
   const set = (key, value) => change({ ...draft, [key]: value });
@@ -107,7 +107,7 @@ function SkillForm({ resources, draft, change, act, started }) {
   return <section className="wb-card"><h2>Compare, review and improve instructions</h2>
     <Notice>Text and file evaluations use Claude Code on saved copies. File tools are confined to the run workspace; shell commands and MCP servers are unavailable. For skills that depend on those tools, inspect capability errors instead of treating the run as a quality score.</Notice>
     <Field label="Skill or memory file"><select aria-label="Evaluation resource" value={source?.id || ''} disabled={loading} onChange={e => act(() => choose(e.target.value))}><option value="">Select an instruction file</option>{resources.filter(r => ['skills', 'memory'].includes(r.kind) && !r.parked && !r.error).map(r => <option key={r.id} value={r.id}>{r.name} · {r.provider} · {r.scope} · {r.path}</option>)}</select></Field>
-    {source && <><p className="wb-path">{source.path}</p><p>Current score: Not evaluated for this draft and suite. Run results are recorded below.</p>
+    {source && <><p className="wb-path">{source.path}</p>{job?.source?.id === source.id && job.result?.summary?.baseline ? <Notice>Latest recorded comparison: Original {percent(job.result.summary.baseline.pass_rate.mean)} → Candidate {percent(job.result.summary.candidate.pass_rate.mean)}. Rerun after changing the draft, tests or model.</Notice> : <p>Current score: Not evaluated for this draft and suite. Run results are recorded below.</p>}
       <Field label="Evaluation mode"><select aria-label="Evaluation mode" value={mode} onChange={e => set('mode', e.target.value)}><option value="evaluate">Task performance and A/B comparison</option>{source.kind === 'skills' && <option value="trigger">Native skill triggering</option>}</select></Field>
       <Field label="Candidate instructions"><textarea className="wb-editor" aria-label="Candidate instructions" value={draft.candidate ?? source.content} onChange={e => set('candidate', e.target.value)} /></Field>
       <p className="wb-muted">The original is the selected file on disk at run start. Edit the candidate, or clear it to compare with no instructions (task mode only).</p>
@@ -170,6 +170,7 @@ export function Labs({ page, data, resources, run, jobsState, drafts, setDrafts,
   const act = async fn => { setBusy(true); setError(''); try { await fn(); await jobsState.refresh(); } catch (e) { setError(e.message); } finally { setBusy(false); } };
   const started = id => { setJob(null); setSelected(id); void jobsState.refresh(); };
   useEffect(() => { setSelected(null); setJob(null); setError(''); }, [page]);
+  useEffect(() => { if (job?.id) document.querySelector('.lab-result')?.scrollIntoView({ block: 'start' }); }, [job?.id]);
   useEffect(() => { let alive = true; lab('status').then(r => { if (alive) setConverter(r.converter); }).catch(e => { if (alive) setError(e.message); }); return () => { alive = false; }; }, [jobsState.jobs]);
   useEffect(() => {
     if (!selected) { setJob(null); return; } let active = true;
@@ -185,7 +186,7 @@ export function Labs({ page, data, resources, run, jobsState, drafts, setDrafts,
       <p className="wb-muted">PDF, Word, PowerPoint, Excel, CSV, HTML, text, JSON, XML, EPUB, Outlook messages and notebooks. Scanned images, audio and video require additional OCR/transcription and are not part of local document extraction.</p>
       <FileSelection files={draft.files || []} change={files => change({ ...draft, files })} act={act} />
       <div className="wb-actions"><Button primary disabled={busy || !draft.files?.length} onClick={() => act(async () => started((await lab('convert', { tokens: draft.files.map(f => f.token) })).job.id))}>Convert to Markdown</Button><Button disabled={busy || converter?.installed} onClick={() => act(async () => started((await lab('install')).job.id))}>Set up converter</Button></div>
-    </section> : page === 'memory-review' ? <MemoryForm resources={resources} projects={data.projects} draft={draft} change={change} act={act} started={started} run={run} evaluate={evaluate} /> : <SkillForm resources={resources} draft={draft} change={change} act={act} started={started} />}
+    </section> : page === 'memory-review' ? <MemoryForm resources={resources} projects={data.projects} draft={draft} change={change} act={act} started={started} run={run} evaluate={evaluate} /> : <SkillForm resources={resources} draft={draft} change={change} act={act} started={started} job={job} />}
     <section className="wb-card"><h2>Run history</h2>{!jobsState.jobs.some(j => kinds.includes(j.kind)) && <p>No runs yet.</p>}{jobsState.jobs.filter(j => kinds.includes(j.kind)).map(j => <div className="wb-row" key={j.id}><Button onClick={() => setSelected(j.id)}>{j.label} · {j.status}</Button><span>{new Date(j.createdAt).toLocaleString()}</span>{terminal(j.status) && <Button onClick={() => { if (window.confirm('Delete this run and its saved input/output copies? Installed resources will remain unchanged.')) act(async () => { await lab('delete', { id: j.id }); if (selected === j.id) setSelected(null); }); }}>Delete run</Button>}</div>)}</section>
     {job && <RunResult key={job.id} job={job} act={act} run={run} started={started} onCandidate={(j, candidate) => { setDrafts(prev => ({ ...prev, 'skill-lab': { source: j.source, candidate, suite: JSON.stringify({ evals: j.suite || [] }, null, 2), mode: j.mode || 'evaluate', settings: j.settings, feedback: j.feedback || '' } })); navigate('skill-lab'); }} />}
   </div>;

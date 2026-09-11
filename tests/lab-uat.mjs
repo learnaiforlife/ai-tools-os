@@ -29,6 +29,8 @@ console.log(JSON.stringify(response));}
 }
 
 export async function runLabUat({ evaluate: js, home, screenshot, output, probe }) {
+  const detected = await js("window.aios.request('tools.detect')");
+  assert.equal(detected.tools.find(t => t.name === 'claude')?.path, join(home, '.local/bin/claude'), 'Fixture CLI isolation must be verified before any AI run');
   const pause = () => new Promise(r => setTimeout(r, 40));
   const wait = async expression => { for (let n = 0; n < 500; n++) { if (await js(expression)) return; await pause(); } throw Error('Lab UAT timed out: ' + expression); };
   const button = async text => { await js(`(()=>{const b=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!b||b.disabled)throw Error('Unavailable '+${JSON.stringify(text)});b.click()})()`); await pause(); };
