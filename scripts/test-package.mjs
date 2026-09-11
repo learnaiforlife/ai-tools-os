@@ -50,10 +50,13 @@ try {
   fs.mkdirSync(join(home, '.aios/lab/runtime'), { recursive: true }); fs.symlinkSync(join(converterRoot, 'runtime/markitdown-0.1.7'), join(home, '.aios/lab/runtime/markitdown-0.1.7'));
   const document = join(home, 'Packaged document ü.csv'); fs.writeFileSync(document, 'Name,Value\nPackaged converter,42\n');
   await session.dropFiles([document]);
-  for (let i = 0; i < 200; i++) { if (await session.evaluate("document.querySelector('.lab-drop')?.innerText.includes('Packaged document ü.csv')")) break; await new Promise(r => setTimeout(r, 50)); }
+  let ready = false;
+  for (let i = 0; i < 400; i++) { if (await session.evaluate("document.querySelector('.lab-drop')?.innerText.includes('Packaged document ü.csv') && [...document.querySelectorAll('main button')].some(b=>b.textContent==='Convert to Markdown'&&!b.disabled)")) { ready = true; break; } await new Promise(r => setTimeout(r, 50)); }
+  assert.ok(ready, 'Native File selection must finish before starting the conversion');
   await session.evaluate("[...document.querySelectorAll('main button')].find(b=>b.textContent==='Convert to Markdown').click()");
   let converted = false;
   for (let i = 0; i < 600; i++) { if (await session.evaluate("document.querySelector('[aria-label=\"Markdown preview Packaged document ü.csv\"]')?.textContent.includes('Packaged converter')")) { converted = true; break; } await new Promise(r => setTimeout(r, 50)); }
+  if (!converted) console.error('Conversion diagnostics:', await session.evaluate("window.aios.lab('list').then(jobs=>({ui:document.querySelector('main')?.innerText,jobs}))"));
   assert.ok(converted, 'Packaged converter did not produce Markdown from the selected native File');
   results.uat.push({ name: 'Packaged preload accepts file drop and real MarkItDown extracts document bytes', passed: true });
   assert.deepEqual(session.rendererErrors, [], 'Packaged feature workflows caused renderer errors');
