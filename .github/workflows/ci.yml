@@ -24,6 +24,8 @@ jobs:
       - run: npm --prefix site ci
       - run: npm run check
       - run: npm run test:desktop
+      - run: npm run test:conversion
+      - run: npm run test:labs:desktop
       - run: npm audit --audit-level=moderate
       - run: npm --prefix site audit --audit-level=moderate
       - run: npm run dist:mac:local

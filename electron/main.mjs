@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { assetResponse } from './assets.mjs';
+import { atomicWrite } from '../scripts/lib/storage.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..'), DIST = join(ROOT, 'dist');
 const DEV_URL = !app.isPackaged ? process.env.AIOS_DEV_SERVER_URL : null;
@@ -14,6 +15,14 @@ const trusted = url => {
 };
 protocol.registerSchemesAsPrivileged([{ scheme: 'aios', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 let worker, workerFailure, serial = 0, busy = false, currentOperation, quitting = false;
+let labWorker, labFailure, labClosed = false;
+const labPending = new Map();
+const LAB_OPERATIONS = new Set(['status', 'list', 'get', 'cancel', 'delete', 'feedback', 'files.text', 'install', 'convert', 'memory.check', 'memory.ai', 'evaluate', 'trigger', 'improve', 'proposal', 'analyze', 'package']);
+function labBackend(operation, args = {}) {
+  if (labFailure) return Promise.resolve({ ok: false, error: labFailure, code: 'BACKEND_FAILED' });
+  if (labPending.size > 20) return Promise.resolve({ ok: false, error: 'Too many pending requests.', code: 'BUSY' });
+  return new Promise(done => { const id = ++serial; labPending.set(id, done); labWorker.postMessage({ id, operation, args }); });
+}
 const pending = new Map(), cancelBuffer = new SharedArrayBuffer(4), cancellation = new Int32Array(cancelBuffer);
 export function validateSender(event) {
   if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame || !trusted(event.senderFrame.url) || event.sender.isDestroyed()) throw Error('Untrusted renderer request.');
@@ -62,6 +71,7 @@ async function createWindow() {
   win.webContents.on('will-prevent-unload', event => {
     const response = dialog.showMessageBoxSync(win, { type: 'question', buttons: ['Keep editing', 'Discard changes'], defaultId: 0, cancelId: 0, message: 'Discard unsaved changes?' });
     if (response === 1) event.preventDefault();
+    else { quitting = false; labClosed = false; }
   });
   await win.loadURL(START);
   if (!app.isPackaged && process.env.AIOS_OPEN_DEVTOOLS === '1') win.webContents.openDevTools({ mode: 'detach' });
@@ -79,13 +89,43 @@ async function start() {
     const allowed = trusted(details.url) || details.url.startsWith('devtools://') || (DEV_URL && details.url.startsWith(DEV_URL.replace('http:', 'ws:')));
     callback({ cancel: !allowed });
   });
-  worker = new Worker(new URL('./worker.mjs', import.meta.url), { workerData: { cancelBuffer } });
+  const workerOptions = { workerData: { cancelBuffer } };
+  worker = new Worker(new URL('./worker.mjs', import.meta.url), workerOptions);
+  labWorker = new Worker(new URL('./lab-worker.mjs', import.meta.url), workerOptions);
+  labWorker.on('message', message => {
+    if (message.progress) { for (const win of BrowserWindow.getAllWindows()) win.webContents.send('aios:lab-progress', message.progress); return; }
+    const done = labPending.get(message.id); labPending.delete(message.id); done?.(message.result);
+  });
+  const failLab = error => { labFailure = `Background job engine stopped: ${error.message || error}. Restart AIOS to recover retained results.`; for (const done of labPending.values()) done({ ok: false, error: labFailure, code: 'BACKEND_FAILED' }); labPending.clear(); };
+  labWorker.on('error', failLab); labWorker.on('exit', code => { if (!quitting) failLab(Error(`Worker exited (${code})`)); });
   worker.on('message', message => {
     if (message.progress) { for (const win of BrowserWindow.getAllWindows()) win.webContents.send('aios:progress', message.progress); return; }
     const done = pending.get(message.id); pending.delete(message.id); busy = false; done?.(message.result);
   });
   worker.on('error', failWorker); worker.on('exit', code => { if (!quitting) failWorker(Error(`Worker exited (${code})`)); });
   ipcMain.handle('aios:request', (event, operation, args) => { validateSender(event); return backend(operation, args); });
+  ipcMain.handle('aios:lab', (event, operation, args = {}) => {
+    validateSender(event);
+    if (!LAB_OPERATIONS.has(operation) || !args || typeof args !== 'object' || Array.isArray(args) || Buffer.byteLength(JSON.stringify(args)) > 2 * 1024 * 1024) return { ok: false, code: 'INVALID', error: 'Invalid lab request.' };
+    return labBackend(operation, args);
+  });
+  ipcMain.handle('aios:pick-files', async event => {
+    validateSender(event);
+    try { const result = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), { title: 'Select input documents', properties: ['openFile', 'multiSelections'] });
+      if (result.canceled) return { ok: true, canceled: true, files: [] };
+      return labBackend('files.register', { paths: result.filePaths });
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  ipcMain.handle('aios:drop-files', (event, paths) => { validateSender(event); return labBackend('files.register', { paths }); });
+  ipcMain.handle('aios:save-artifact', async (event, args) => {
+    validateSender(event);
+    try {
+      const artifact = await labBackend('export.content', args); if (!artifact.ok) return artifact;
+      const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), { title: 'Save job output', defaultPath: artifact.name });
+      if (result.canceled || !result.filePath) return { ok: true, canceled: true };
+      atomicWrite(result.filePath, artifact.encoding === 'base64' ? Buffer.from(artifact.content, 'base64') : artifact.content); return { ok: true, path: result.filePath };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
   ipcMain.handle('aios:copy', (event, text) => {
     validateSender(event);
     if (typeof text !== 'string' || Buffer.byteLength(text) > 2 * 1024 * 1024) return { ok: false, error: 'Clipboard text exceeds the 2 MiB limit.' };
@@ -109,5 +149,12 @@ async function start() {
   await createWindow(); app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) void createWindow().catch(startupError); });
 }
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('will-quit', () => { quitting = true; void worker?.terminate(); });
+app.on('before-quit', event => {
+  if (labClosed || !labWorker) return;
+  event.preventDefault();
+  if (quitting) return;
+  quitting = true;
+  void labBackend('_shutdown').finally(() => { labClosed = true; app.quit(); });
+});
+app.on('will-quit', () => { quitting = true; void worker?.terminate(); void labWorker?.terminate(); });
 void start().catch(startupError);

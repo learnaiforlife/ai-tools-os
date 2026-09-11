@@ -109,6 +109,14 @@ export async function packagedSession({ exe, home, userData, cwd }) {
     if (!inventory?.ok) throw Error('Packaged inventory failed: ' + JSON.stringify(inventory));
     if (inventory.providerPaths.claude !== join(home, '.claude') || inventory.providerPaths.codex !== join(home, '.codex') || inventory.providerPaths.claudeJson !== join(home, '.claude.json')) throw Error('Packaged fixture isolation failed; mutations are forbidden.');
     return { inventory, evaluate, close, rendered, rendererErrors,
+      dropFiles: async paths => {
+        await evaluate("(()=>{const e=document.createElement('input');e.type='file';e.multiple=true;e.id='uat-local-files';document.body.appendChild(e)})()");
+        try {
+          const { root } = await command('DOM.getDocument'); const { nodeId } = await command('DOM.querySelector', { nodeId: root.nodeId, selector: '#uat-local-files' });
+          await command('DOM.setFileInputFiles', { nodeId, files: paths });
+          await evaluate("(()=>{const dt=new DataTransfer();for(const f of document.querySelector('#uat-local-files').files)dt.items.add(f);document.querySelector('.lab-drop').dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}));})()");
+        } finally { await evaluate("document.querySelector('#uat-local-files')?.remove()"); }
+      },
       screenshot: async () => Buffer.from((await command('Page.captureScreenshot', { format: 'png' })).data, 'base64'),
       viewport: (width, height) => command('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }),
       request: (op, args = {}) => evaluate(`window.aios.request(${JSON.stringify(op)},${JSON.stringify(args)})`) };

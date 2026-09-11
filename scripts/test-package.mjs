@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { inspectApplication, inspectDmg, verifyInstallerMetadata, digest as hash, run } from './package-checks.mjs';
 import { packagedSession } from './packaged-session.mjs';
 import { seedUat, runPackagedUat } from '../tests/packaged-uat.mjs';
+import { seedLabUat, runLabUat } from '../tests/lab-uat.mjs';
+import { createConverter } from './lib/converter.mjs';
 
 const directory = resolve(process.argv[2] || 'release-local'), pkg = JSON.parse(fs.readFileSync('package.json'));
 const testArch = process.argv[3] || process.arch;
@@ -38,6 +40,23 @@ const call = async (operation, args = {}) => { const result = await session.requ
 try {
   install(); session = await packagedSession({ exe, home, userData, cwd: base });
   await runPackagedUat({ session, home, results: results.uat, output: resolve('test-results', `packaged-uat-${testArch}.png`) });
+  seedLabUat(home, process.execPath);
+  await runLabUat({ evaluate: session.evaluate, home, output: resolve('test-results'), probe: async (name, fn) => {
+    try { await fn(); results.uat.push({ name, passed: true }); console.log('PASS', name); }
+    catch (error) { results.uat.push({ name, passed: false, error: error.stack }); throw error; }
+  } });
+  const converterRoot = join(base, 'converter-runtime'), converter = createConverter({ root: converterRoot, home });
+  await converter.ensure(new AbortController().signal, message => console.log('Converter UAT:', message));
+  fs.mkdirSync(join(home, '.aios/lab/runtime'), { recursive: true }); fs.symlinkSync(join(converterRoot, 'runtime/markitdown-0.1.7'), join(home, '.aios/lab/runtime/markitdown-0.1.7'));
+  const document = join(home, 'Packaged document ü.csv'); fs.writeFileSync(document, 'Name,Value\nPackaged converter,42\n');
+  await session.dropFiles([document]);
+  for (let i = 0; i < 200; i++) { if (await session.evaluate("document.querySelector('.lab-drop')?.innerText.includes('Packaged document ü.csv')")) break; await new Promise(r => setTimeout(r, 50)); }
+  await session.evaluate("[...document.querySelectorAll('main button')].find(b=>b.textContent==='Convert to Markdown').click()");
+  let converted = false;
+  for (let i = 0; i < 600; i++) { if (await session.evaluate("document.querySelector('[aria-label=\"Markdown preview Packaged document ü.csv\"]')?.textContent.includes('Packaged converter')")) { converted = true; break; } await new Promise(r => setTimeout(r, 50)); }
+  assert.ok(converted, 'Packaged converter did not produce Markdown from the selected native File');
+  results.uat.push({ name: 'Packaged preload accepts file drop and real MarkItDown extracts document bytes', passed: true });
+  assert.deepEqual(session.rendererErrors, [], 'Packaged feature workflows caused renderer errors');
   const resource = session.inventory.resources.find(r => r.path === path); assert.ok(resource, 'Fixture source missing');
   await call('resource.write', { id: resource.id, revision: resource.revision, content: 'saved from packaged app' });
   assert.equal(fs.readFileSync(path, 'utf8'), 'saved from packaged app');

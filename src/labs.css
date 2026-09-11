@@ -1,0 +1,16 @@
+.lab-workspace pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:420px; overflow:auto; background:var(--bg-inset); border:1px solid var(--line); border-radius:8px; padding:16px; font:12px/1.7 ui-monospace,Menlo,monospace; }
+.lab-workspace input:not([type=checkbox]), .lab-workspace select, .lab-workspace textarea { max-width:100%; min-width:0; }
+.lab-workspace .wb-field textarea:not(.wb-editor) { min-height:86px; padding:12px; background:var(--bg-inset); color:var(--tx-hi); border:1px solid var(--line-2); border-radius:8px; }
+.lab-drop { padding:22px; border:1px dashed var(--line-3); border-radius:10px; margin:16px 0; font-size:13px; color:var(--tx-mid); }
+.lab-suite { min-height:180px; }
+.lab-builder, .lab-workspace details { margin:18px 0; font-size:13px; }
+.lab-workspace summary { cursor:pointer; line-height:1.6; overflow-wrap:anywhere; }
+.lab-table-wrap { overflow:auto; }
+.lab-workspace table { width:100%; border-collapse:collapse; font-size:13px; }
+.lab-workspace th, .lab-workspace td { text-align:left; padding:12px; border-bottom:1px solid var(--line); }
+.lab-workspace th { color:var(--tx-mid); }
+.lab-memory-files { max-height:340px; overflow:auto; }
+.lab-memory-files small { display:block; margin-top:5px; }
+.lab-memory-files .wb-check { align-items:flex-start; }
+.lab-memory-files .wb-check span { min-width:0; }
+.wb-sidebar { overflow-y:auto; }

@@ -6,6 +6,7 @@ import { Storage, exists, canonical, inside, readText, fail, hash, MAX_BYTES, at
 import { discover, DEFAULT_PREFS, providerPaths, resourceId } from './discovery.mjs';
 import { validate, parseConfig, jsonText, validateMcp, mcpEnabledToml, appendMcpToml, editJson, jsonValueText, editTomlValue, suggestFrontmatterRepair } from './formats.mjs';
 import { transferPlan, applyTransfer, bundleInventory } from './transfers.mjs';
+import { memorySections, relocateMemoryText } from './memory-review.mjs';
 
 const INITIAL = { version: 2, roots: null, preferences: DEFAULT_PREFS, parked: {}, profiles: [], prompts: [], activeProfile: null };
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -271,6 +272,18 @@ export function createService(options = {}) {
     }
     scan(state);
     if (operation === 'inventory') return { ...snapshot, preferences: state.preferences, profiles: state.profiles, activeProfile: state.activeProfile, prompts: state.prompts };
+    if (operation === 'resources.read') {
+      if (!Array.isArray(args.ids) || !args.ids.length || args.ids.length > 30 || new Set(args.ids).size !== args.ids.length) fail('INVALID', 'Select 1–30 distinct instruction files.');
+      let bytes = 0;
+      const files = args.ids.map(id => {
+        const r = find(id, false);
+        if (!['skills', 'memory'].includes(r.kind) || r.error) fail('INVALID', 'Select readable skills or memory files.');
+        const file = contentFor(r, state); bytes += Buffer.byteLength(file.content);
+        if (bytes > 2 * 1024 * 1024) fail('LIMIT', 'Selected instruction text exceeds 2 MiB. Review fewer files together.');
+        return { id, kind: r.kind, name: r.name, path: file.path, canonicalPath: r.canonicalPath, provider: r.provider, project: r.project, scope: r.scope, readonly: r.readonly, content: file.content, revision: file.revision };
+      });
+      return { files };
+    }
     if (operation === 'resource.read') return contentFor(find(args.id, args.parked), state);
     if (operation === 'transfer.preview' || operation === 'transfer.apply') {
       const context = transferContext(state, snapshot), plan = transferPlan(args, context);
@@ -299,6 +312,24 @@ export function createService(options = {}) {
       const repair = suggestFrontmatterRepair(file.content);
       if (!repair) fail('UNSUPPORTED', 'No unambiguous automatic repair is available. Edit the header using the reported line and compare your changes before saving.');
       return { ...repair, revision: file.revision };
+    }
+    if (operation === 'memory.move.preview' || operation === 'memory.move.apply') {
+      const r = find(args.id, false); revision(r, args.revision);
+      if (r.kind !== 'memory' || r.scope !== 'user') fail('INVALID', 'Select a user-level memory file.');
+      const sourcePath = writable(r, state), current = readText(sourcePath);
+      const section = memorySections(current.content).find(s => s.start === args.start && s.end === args.end);
+      if (!section) fail('CONFLICT', 'The selected section no longer matches the source. Review the file again.');
+      const target = destination({ kind: 'memory', provider: r.provider, scope: 'project', project: args.project, name: 'Project instructions' }, state);
+      if (target === sourcePath) fail('INVALID', 'Source and destination must differ.');
+      const before = exists(target) ? readText(target) : { content: '', revision: null };
+      const selected = relocateMemoryText(current.content.slice(section.start, section.end), sourcePath, target), eol = before.content.includes('\r\n') ? '\r\n' : '\n';
+      const writes = [{ path: sourcePath, before: current.content, content: current.content.slice(0, section.start) + current.content.slice(section.end), revision: current.revision },
+        { path: target, before: before.content, content: before.content + (before.content && !before.content.endsWith(eol + eol) ? eol + eol : '') + selected, revision: before.revision }];
+      const previewRevision = hash(JSON.stringify(writes));
+      if (operation === 'memory.move.preview') return { writes, previewRevision };
+      if (args.previewRevision !== previewRevision) fail('CONFLICT', 'Source or destination changed. Review a new comparison before moving.');
+      for (const w of writes) validate(w.content, w.path, 'memory');
+      store.commit('Move memory section to project', writes); return scan(state);
     }
     if (operation === 'resource.write') {
       const r = find(args.id, args.parked); revision(r, args.revision);
