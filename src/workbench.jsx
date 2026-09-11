@@ -14,11 +14,12 @@ function useDraftGuard(dirty) {
 }
 function Editor({ resource, run, close, openSource, initialDraft }) {
   const [file, setFile] = useState(null), [draft, setDraft] = useState(''), [error, setError] = useState(''), [saving, setSaving] = useState(false), [diff, setDiff] = useState(false);
+  const [repairReview, setRepairReview] = useState(false), [repairReviewed, setRepairReviewed] = useState(false);
   const sensitive = ['config', 'mcp', 'scripts'].includes(resource.kind);
   const [revealed, setRevealed] = useState(!sensitive), [reloadKey, setReloadKey] = useState(0);
   const dirty = !!file && draft !== file.content; useDraftGuard(dirty);
   useEffect(() => {
-    if (!revealed) return; let active = true; setFile(null); setError('');
+    if (!revealed) return; let active = true; setFile(null); setError(''); setRepairReview(false); setRepairReviewed(false);
     request('resource.read', { id: resource.id, parked: !!resource.parked }).then(result => { if (active) { setFile(result); setDraft(reloadKey === 0 && initialDraft !== undefined ? initialDraft : result.content); } }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [resource.id, resource.parked, revealed, reloadKey]);
@@ -34,15 +35,23 @@ function Editor({ resource, run, close, openSource, initialDraft }) {
     {error && <Notice error>{error}</Notice>}
     {revealed && !file && !error && <p role="status">Reading complete file…</p>}
     {file && <>
+      {resource.metadataWarning && <Notice>{resource.error} The complete resource is available below. Repair its metadata before transferring it; its provider may also reject this header.
+        {!file.readonly && /\.(md|mdc)$/.test(resource.path) && <Button disabled={saving || dirty} onClick={async () => {
+          setSaving(true); setError('');
+          try { const result = await request('resource.repair.preview', { id: resource.id, parked: !!resource.parked, revision: file.revision }); setDraft(result.content); setDiff(true); setRepairReview(true); setRepairReviewed(false); }
+          catch (e) { setError(e.message); } finally { setSaving(false); }
+        }}>Preview header repair</Button>}
+      </Notice>}
       <div className="wb-actions"><span>{file.readonly ? 'Read-only inspection' : dirty ? 'Unsaved draft' : 'Matches loaded version'}</span>
         <Button disabled={saving} onClick={() => setDiff(!diff)}>{diff ? 'Editor' : 'Compare changes'}</Button>
         <Button disabled={saving} onClick={() => { if (!dirty || window.confirm('Discard the draft and reload from disk?')) setReloadKey(k => k + 1); }}>Reload from disk</Button>
       </div>
       {diff ? <div className="wb-diff"><section><h3>Loaded version</h3><pre>{file.content}</pre></section><section><h3>Your draft</h3><pre>{draft}</pre></section></div>
-        : <textarea className="wb-editor" aria-label="File content" spellCheck={false} value={draft} disabled={saving} readOnly={file.readonly} onChange={e => setDraft(e.target.value)} />}
+        : <textarea className="wb-editor" aria-label="File content" spellCheck={false} value={draft} disabled={saving} readOnly={file.readonly} onChange={e => { setDraft(e.target.value); setRepairReviewed(false); }} />}
+      {repairReview && <label className="wb-check"><input type="checkbox" checked={repairReviewed} onChange={e => setRepairReviewed(e.target.checked)} />I reviewed the header repair and the preserved resource body.</label>}
       <p className="wb-muted">The full file is preserved. JSON, TOML and resource frontmatter are syntax checked on save; plain instruction Markdown is saved as text. Provider semantics remain the provider’s responsibility.</p>
       <div className="wb-actions">
-        {!file.readonly && <Button primary disabled={!dirty || saving} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</Button>}
+        {!file.readonly && <Button primary disabled={!dirty || saving || repairReview && !repairReviewed} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</Button>}
         {resource.sourceId && <Button disabled={saving} onClick={() => openSource(resource.sourceId)}>Edit native source</Button>}
         <Button disabled={saving} onClick={async () => { try { await copyText(draft); } catch (e) { setError(e.message); } }}>Copy displayed content</Button>
       </div>
@@ -191,14 +200,16 @@ export function Workbench() {
   useEffect(() => { const key = e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); searchRef.current?.focus(); } }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key); }, []);
   const resources = useMemo(() => data.resources.filter(r => (provider === 'all' || r.provider === provider) && (scope === 'all' || r.scope === scope)
     && (scope !== 'project' || !!project && r.project === project) && (!search || [r.name, r.path, r.provider, r.description].some(s => String(s || '').toLowerCase().includes(search.toLowerCase())))), [data.resources, provider, scope, project, search]);
-  const sourceIssues = data.issues.filter(issue => issue.code !== 'LEGACY_DATA');
+  const sourceIssues = data.issues.filter(issue => issue.code !== 'LEGACY_DATA' && issue.severity !== 'warning');
+  const metadataIssues = data.issues.filter(issue => issue.severity === 'warning');
   const retainedData = data.issues.filter(issue => issue.code === 'LEGACY_DATA');
   const scanLimited = sourceIssues.some(issue => issue.code === 'SCAN_LIMIT');
+  const scanTimedOut = sourceIssues.some(issue => issue.code === 'SCAN_TIMEOUT');
   const edit = (r, initialDraft) => setModal({ type: 'edit', resource: r, initialDraft });
   const toggle = r => { if (window.confirm(`${r.enabled ? 'Disable' : 'Restore'} ${r.name} in ${r.path}? The provider may require a reload.`)) void run('resource.toggle', { id: r.id, parked: !!r.parked, revision: r.revision, enabled: !r.enabled }).catch(() => {}); };
   const resourceList = items => <div className="wb-list">{!items.length && <Notice>No matching resources found. Choose a scope or add a project folder in Settings.</Notice>}{items.map(r => <article className="wb-resource" key={r.id + (r.parked ? '-parked' : '-live')}>
-    <div><button className="wb-resource-name" onClick={() => edit(r)}>{r.name}</button><span className="wb-badge">{r.provider}</span><span className="wb-badge">{r.nativeScope || r.scope}</span><span className="wb-badge">{r.readonly ? 'Read-only' : r.archived ? 'Archived' : r.enabled ? 'Configured' : 'Disabled'}</span>
-      <p className="wb-path">{r.path}</p>{r.description && <p>{r.description}</p>}{r.error && <Notice error>{r.error}</Notice>}
+    <div><button className="wb-resource-name" onClick={() => edit(r)}>{r.name}</button><span className="wb-badge">{r.provider}</span><span className="wb-badge">{r.nativeScope || r.scope}</span><span className="wb-badge">{r.readonly ? 'Read-only' : r.archived ? 'Archived' : r.metadataWarning ? 'Needs repair' : r.enabled ? 'Configured' : 'Disabled'}</span>
+      <p className="wb-path">{r.path}</p>{r.description && <p>{r.description}</p>}{r.error && <Notice error={!r.metadataWarning}>{r.metadataWarning ? 'Metadata needs review. ' : ''}{r.error}</Notice>}
       {r.kind === 'mcp' && <p className="wb-muted">{r.transport || 'Native'} · Runtime connection unknown{r.hasSecrets ? ' · Credential fields present' : ''}</p>}
     </div><div className="wb-resource-actions"><Button disabled={busy || !!r.error && r.readonly} onClick={() => edit(r)}>Inspect / edit</Button>
       {!r.readonly && ['mcp', 'plugins', 'skills', 'commands', 'agents'].includes(r.kind) && <Button disabled={busy} aria-label={`${r.enabled ? 'Disable' : 'Restore'} ${r.name} from ${r.path}`} onClick={() => toggle(r)}>{r.enabled ? 'Disable' : 'Restore'}</Button>}
@@ -219,6 +230,7 @@ export function Workbench() {
   else if (page === 'dashboard') screen = <><div className="wb-metrics">{KINDS.map(kind => <button key={kind} className="wb-card" onClick={() => setPage(kind)}><strong>{resources.filter(r => r.kind === kind).length}</strong><span>{PAGES.find(p => p[0] === kind)[1]}</span></button>)}</div>
     <section className="wb-card"><h2>Your machine’s configuration</h2><p>AIOS discovers native tool files and lets you inspect, edit, disable and restore them. Every listed resource belongs to a specific provider and source path.</p><p>{data.syncedAt ? `Last scan: ${new Date(data.syncedAt).toLocaleString()}` : 'Waiting for the first scan.'}</p><p>{data.roots.length} scan folders · {data.projects.length} discovered projects · {sourceIssues.length} reported source issues</p><Button onClick={() => setPage('settings')}>Manage scan folders</Button></section>
     {!!sourceIssues.length && <section className="wb-card"><h2>Discovery issues</h2>{sourceIssues.map((i, n) => <Notice key={n} error><strong>{i.code}</strong> · {i.message}<p className="wb-path">{i.path}</p></Notice>)}</section>}
+    {!!metadataIssues.length && <section className="wb-card"><h2>Resource metadata needs review ({metadataIssues.length})</h2><p>These files were found and can be inspected. Their headers could not be parsed; scanning other resources continued. AIOS has not changed them. Open a file to repair its header or preview a supported correction.</p>{metadataIssues.map((i, n) => <details key={n}><summary>{i.path}</summary><Notice>{i.message}</Notice><Button onClick={() => edit(data.resources.find(r => r.path === i.path && r.metadataWarning))}>Review file</Button></details>)}</section>}
     {!!retainedData.length && <section className="wb-card"><h2>Older AIOS data available</h2>{retainedData.map((i, n) => <Notice key={n}>{i.message}<p className="wb-path">{i.path}</p></Notice>)}<Button onClick={() => navigate('settings')}>Review import options</Button></section>}
     {data.supportNotes?.map(note => <p key={note} className="wb-muted">{note}</p>)}
     <section className="wb-card"><h2>Provider support and precedence</h2>{data.providers?.map(p => <details key={p.name}><summary>{p.name}</summary><p>{p.formats}</p><p>{p.scopes}</p><p>{p.precedence}</p><p className="wb-muted">{p.limitations}</p></details>)}</section></>;
@@ -238,7 +250,7 @@ export function Workbench() {
       <Button disabled={busy || hasSettingsDraft} onClick={() => void run().catch(() => {})}>{busy ? 'Working…' : 'Sync'}</Button>{busy && operation === 'inventory' && <Button onClick={() => void window.aios?.cancelScan().then(result => { if (!result.ok) report(Error(result.error)); }).catch(report)}>Cancel scan</Button>}
     </header><main className="wb-main"><div className="wb-page-title"><div><small>YOUR AI WORKSPACE</small><h1>{PAGES.find(p => p[0] === page)?.[1]}</h1></div><span className="wb-badge">{provider === 'all' ? 'All providers' : provider}</span></div>
       {busy && operation === 'inventory' && <Notice>Scanning local files. If macOS asks for access to a scan folder, respond to that prompt to continue. Cancellation takes effect after the current file operation returns.</Notice>}
-      {error && <Notice error>{error}<Button onClick={() => setError('')}>Dismiss message</Button></Notice>}{data.incomplete && <Notice error>{scanLimited ? 'Scan stopped before checking every folder. Review scan limits in Overview; select narrower folders or add exclusions.' : `Scan finished with ${sourceIssues.length} source ${sourceIssues.length === 1 ? 'issue' : 'issues'}. Valid resources are available. Review the affected files in Overview.`}{page !== 'dashboard' && <Button onClick={() => navigate('dashboard')}>Review source issues</Button>}</Notice>}{!data.incomplete && page !== 'dashboard' && sourceIssues.length > 0 && <Notice>{sourceIssues.length} discovery issues need review. <Button onClick={() => navigate('dashboard')}>Review source issues</Button></Notice>}{screen}</main>
+      {error && <Notice error>{error}<Button onClick={() => setError('')}>Dismiss message</Button></Notice>}{data.incomplete && <Notice error>{scanLimited ? 'Scan stopped before checking every folder. Review scan limits in Overview; select narrower folders or add exclusions.' : scanTimedOut ? 'A folder exceeded its processing budget. Retry Sync or select a smaller project folder. Other folders were checked separately.' : `Scan finished with ${sourceIssues.length} source ${sourceIssues.length === 1 ? 'issue' : 'issues'}. Valid resources are available. Review the affected files in Overview.`}{page !== 'dashboard' && <Button onClick={() => navigate('dashboard')}>Review source issues</Button>}</Notice>}{!data.incomplete && page !== 'dashboard' && sourceIssues.length > 0 && <Notice>{sourceIssues.length} discovery issues need review. <Button onClick={() => navigate('dashboard')}>Review source issues</Button></Notice>}{!data.incomplete && metadataIssues.length > 0 && page !== 'dashboard' && <Notice>Scan completed. {metadataIssues.length} resource headers need review. Files remain available for inspection. <Button onClick={() => navigate('dashboard')}>Review resource headers</Button></Notice>}{screen}</main>
     <footer className="wb-status" role="status"><span>{progress ? `Scanning ${progress.entries || 0} entries…` : status}</span><span>{data.syncedAt ? new Date(data.syncedAt).toLocaleTimeString() : 'No completed scan'} · {resources.length} matching resources</span></footer>
     {modal?.type === 'edit' && <Editor key={modal.resource.id + (modal.resource.parked ? '-parked' : '-live')} resource={modal.resource} initialDraft={modal.initialDraft} run={run} close={() => setModal(null)} openSource={id => { const r = data.resources.find(r => r.id === id && !r.parked); if (r) edit(r); else report(Error('Source is unavailable. Restore the MCP entry first.')); }} />}
     {modal?.type === 'create' && <CreateResource kind={modal.kind} data={data} scope={scope} project={project} run={run} close={() => setModal(null)} />}

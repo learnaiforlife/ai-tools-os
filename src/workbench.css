@@ -2,6 +2,8 @@
 .wb-app button,.wb-dialog button,.wb-app input,.wb-dialog input,.wb-app select,.wb-dialog select,.wb-dialog textarea { font:inherit; }
 .wb-field { min-width:0; }
 .wb-field > input,.wb-field > select,.wb-field > textarea { width:100%; max-width:100%; }
+.wb-card details { margin:12px 0; }
+.wb-card summary { overflow-wrap:anywhere; font-size:12px; cursor:pointer; }
 .wb-sidebar { grid-row:1 / 4; background:var(--bg-1); border-right:1px solid var(--line); padding:22px 12px; display:flex; flex-direction:column; overflow:auto; }
 .wb-brand { display:flex; align-items:center; gap:10px; padding:0 10px 24px; font-weight:750; font-size:17px; }
 .wb-brand .brand-mark { width:29px; height:29px; flex:none; }.wb-brand small { display:block; font-size:10px; font-weight:400; color:var(--tx-mid); margin-top:4px; }

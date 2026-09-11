@@ -216,15 +216,35 @@ export async function runPackagedUat({ session, home, results, output }) {
     try {
       fs.writeFileSync(path, '---\nname: UAT skill\ndescription: secret-fixture: invalid colon\n---\nBody'); fs.writeFileSync(legacy, '{}');
       await nav('Skills'); await sync(); const text = await mainText();
-      assert.ok(text.includes('Scan finished with 1 source issue')); assert.ok(text.includes('line 3')); assert.ok(text.includes('Quote text'));
+      assert.ok(text.includes('Scan completed. 1 resource headers need review')); assert.ok(text.includes('line 3')); assert.ok(text.includes('Quote text'));
       assert.ok(!text.includes('narrower folders')); assert.ok(!text.includes('secret-fixture'));
-      await button('Review source issues'); await wait("document.querySelector('main h1')?.textContent==='Overview'");
+      await button('Review resource headers'); await wait("document.querySelector('main h1')?.textContent==='Overview'");
       assert.ok((await mainText()).includes('Older AIOS data available'));
       fs.writeFileSync(path, original); await sync();
       assert.equal(await js("document.querySelectorAll('main [role=alert]').length"), 0); assert.ok((await mainText()).includes('0 reported source issues'));
       await nav('MCP servers'); assert.equal(await js("[...document.querySelectorAll('main button')].find(b=>b.textContent==='Capture current configuration').disabled"), false);
     } finally { fs.writeFileSync(path, original); fs.rmSync(legacy, { force: true }); await sync(); }
     await nav('Overview'); assert.deepEqual(session.rendererErrors,[]);
+  });
+  await step('fresh-machine header warnings open reviewed repair drafts without changing source until save', async () => {
+    const path = join(home, '.agents/skills/fresh-machine/SKILL.md'); fs.mkdirSync(dirname(path), { recursive: true });
+    const original = '\uFEFF---\r\nname: Fresh machine\r\ndescription: Plan tasks: carefully\r\n---\r\nKeep the complete body\r\n';
+    try {
+      fs.writeFileSync(path, original); await nav('Overview'); await sync();
+      assert.ok((await mainText()).includes('Resource metadata needs review (1)'));
+      assert.ok(!(await mainText()).includes('Scan stopped'));
+      await js("document.querySelector('main details').open=true"); await button('Review file'); await content();
+      await button('Preview header repair'); await wait("!!document.querySelector('dialog .wb-diff')");
+      assert.equal(fs.readFileSync(path, 'utf8'), original);
+      assert.equal(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Save changes').disabled"), true);
+      assert.ok((await js("document.querySelector('dialog .wb-diff').innerText")).includes('description: "Plan tasks: carefully"'));
+      await js("document.querySelector('dialog input[type=checkbox]').click()");
+      await wait("[...document.querySelectorAll('dialog button')].some(b=>b.textContent==='Save changes'&&!b.disabled)");
+      await button('Save changes'); await finish();
+      assert.equal(fs.readFileSync(path, 'utf8'), original.replace('Plan tasks: carefully', '"Plan tasks: carefully"'));
+      assert.ok(!(await mainText()).includes('Resource metadata needs review'));
+      await nav('History & recovery'); assert.ok((await mainText()).includes('fresh-machine'));
+    } finally { fs.rmSync(dirname(path), { recursive: true, force: true }); await sync(); }
   });
   const reviewTransfer = async () => {
     await button('Review transfer'); await wait("!!document.querySelector('dialog input[type=checkbox]')");

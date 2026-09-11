@@ -136,7 +136,8 @@ test('frontmatter errors identify the line and repair without exposing header va
   const check = error => error.code === 'INVALID' && error.message.includes('line 3') && error.message.includes('Quote text') && !error.message.includes('private-header-value');
   assert.throws(() => frontmatter(raw), check); assert.throws(() => validate(raw, 'SKILL.md', 'skills'), check);
   const f = fixture(t); f.put('.claude/skills/example/SKILL.md', raw);
-  const issue = f.call('inventory').issues.find(i => i.code === 'PARSE_ERROR'); assert.ok(issue.message.includes('line 3')); assert.ok(!issue.message.includes('private-header-value'));
+  const inventory = f.call('inventory'); assert.equal(inventory.incomplete, false);
+  const issue = inventory.issues.find(i => i.code === 'FRONTMATTER_INVALID'); assert.equal(issue.severity, 'warning'); assert.ok(issue.message.includes('line 3')); assert.ok(!issue.message.includes('private-header-value'));
   const repaired = raw.replace('description: private-header-value: another value', 'description: "private-header-value: another value"');
   assert.equal(frontmatter(repaired).metadata.description, 'private-header-value: another value'); assert.equal(frontmatter(repaired).body, 'Body');
 });

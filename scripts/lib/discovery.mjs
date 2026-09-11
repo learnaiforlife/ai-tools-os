@@ -25,14 +25,19 @@ export function providerPaths(home, env, prefs) {
 }
 
 export function discover({ home = homedir(), env = process.env, roots = [], prefs = DEFAULT_PREFS, parked = {}, managedRoots,
-  progress = () => {}, canceled = () => false, maxEntries = 50000, maxMs = 15000 }) {
+  progress = () => {}, canceled = () => false, maxEntries = 50000, maxMs = 15000, now = () => performance.now() }) {
   const dirs = providerPaths(home, env, prefs);
   const managed = managedRoots ?? ['/Library/Application Support/ClaudeCode'];
   const resources = [], issues = [], projects = new Set(), known = new Map();
   let entries = 0, passEntries = 0, incomplete = false;
-  const start = Date.now();
-  const issue = (path, error, code = 'SOURCE_ERROR') => { incomplete = true; issues.push({ path, code, message: error }); };
-  const canonicalRoots = paths => paths.flatMap(path => { try { return [canonical(path)]; } catch (e) { issue(path, 'Cannot resolve the configured folder.', e.code); return []; } });
+  let start = now(), ioMs = 0;
+  // macOS permission prompts and slow disks block synchronous filesystem calls.
+  // Budget processing time separately; entry/depth limits still bound traversal.
+  const io = fn => (...args) => { const at = now(); try { return fn(...args); } finally { ioMs += Math.max(0, now() - at); } };
+  const diskExists = io(exists), resolvePath = io(canonical), readFile = io(readText);
+  const stat = io(fs.statSync), list = io(fs.readdirSync), openDirectory = io(fs.opendirSync);
+  const issue = (path, error, code = 'SOURCE_ERROR', severity = 'error') => { if (severity === 'error') incomplete = true; issues.push({ path, code, message: error, severity }); };
+  const canonicalRoots = paths => paths.flatMap(path => { try { return [resolvePath(path)]; } catch (e) { issue(path, 'Cannot resolve the configured folder.', e.code); return []; } });
   const nativeRoots = canonicalRoots(Object.values(dirs).filter(p => p !== dirs.claudeJson));
   const allowedRoots = [...nativeRoots, ...canonicalRoots(roots)];
   const managedCanonical = canonicalRoots(managed);
@@ -42,36 +47,37 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
     if (canceled()) fail('CANCELED', 'Scan canceled. Previous inventory remains available.');
     if (++entries % 100 === 0) progress({ entries, path });
     passEntries += cost;
-    if (passEntries > maxEntries || Date.now() - start > maxMs) fail('SCAN_LIMIT', 'Scan limit reached. Add a narrower folder or configure exclusions.');
+    if (passEntries > maxEntries) fail('SCAN_LIMIT', 'Folder entry limit reached. Add a narrower folder or configure exclusions.');
+    if (now() - start - ioMs > maxMs) fail('SCAN_TIMEOUT', 'Processing this folder took too long. Retry Sync or select a smaller project folder. Other scan folders were checked separately.');
   };
   function attempt(path, fn) {
     try { return fn(); }
     catch (e) {
-      if (['SCAN_LIMIT', 'CANCELED'].includes(e.code)) throw e;
+      if (['SCAN_LIMIT', 'SCAN_TIMEOUT', 'CANCELED'].includes(e.code)) throw e;
       issue(path, e.code === 'EACCES' || e.code === 'EPERM' ? 'Permission denied. Grant access in macOS Privacy settings.' : e.message, e.code || 'SOURCE_ERROR');
     }
   }
   function pass(path, fn) {
-    passEntries = 0;
+    passEntries = 0; start = now(); ioMs = 0;
     try { fn(); } catch (e) { if (e.code === 'CANCELED') throw e; issue(path, e.message, e.code); }
   }
   function add(path, kind, provider, project = null, extras = {}) {
     const scope = extras.managed ? 'managed' : project ? 'project' : 'user';
     try {
-      if (!exists(path)) return;
+      if (!diskExists(path)) return;
       check(path);
-      const real = canonical(path);
+      const real = resolvePath(path);
       const authorized = real === allowedFile || allowedRoots.some(r => inside(real, r)) || (extras.managed && managedCanonical.some(r => inside(real, r)));
-      const base = { id: resourceId(provider, kind, path), kind, provider, scope, project, path, name: basename(path),
+      const base = { id: resourceId(provider, kind, path), kind, provider, scope, project, path, name: kind === 'skills' ? basename(dirname(path)) : basename(path),
         enabled: true, effective: 'Provider decides precedence and project trust', canonicalPath: real,
         readonly: !!extras.managed || !authorized, symlink: real !== path, ...extras };
       if (!authorized) {
         resources.push({ ...base, error: 'Symbolic link target is outside selected folders. Add its folder explicitly to allow access.' });
         issue(path, base.error || 'Symbolic link target is outside selected folders.', 'SYMLINK_BOUNDARY'); return;
       }
-      const file = readText(real);
+      const file = readFile(real);
       const item = { ...base, revision: file.revision, bytes: Buffer.byteLength(file.content), mode: file.mode,
-        estimatedTokens: Math.ceil(file.content.length / 4), modifiedAt: fs.statSync(real).mtime.toISOString() };
+        estimatedTokens: Math.ceil(file.content.length / 4), modifiedAt: stat(real).mtime.toISOString() };
       // Deduplicate aliases of the same native source, while retaining provider identity.
       const dedupe = `${provider}:${kind}:${real}`;
       if (known.has(dedupe)) return;
@@ -85,7 +91,7 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
           item.name = typeof metadata.name === 'string' ? metadata.name : kind === 'skills' ? basename(dirname(path)) : basename(path);
           item.description = typeof metadata.description === 'string' ? metadata.description : '';
           item.syntax = 'parsed';
-        } catch (error) { item.error = error.message; issue(path, item.error, 'PARSE_ERROR'); }
+        } catch (error) { item.error = error.message; item.metadataWarning = true; item.syntax = 'unparsed'; issue(path, item.error, path.endsWith('.toml') ? 'METADATA_INVALID' : 'FRONTMATTER_INVALID', 'warning'); }
       }
       if (kind === 'config') {
         try {
@@ -127,21 +133,21 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
           }
         } catch (e) { item.error = e.message; issue(path, e.message, 'PARSE_ERROR'); }
       }
-    } catch (e) { if (['SCAN_LIMIT', 'CANCELED'].includes(e.code)) throw e; issue(path, e.code === 'EACCES' ? 'Permission denied. Grant access in macOS Privacy settings.' : e.message, e.code); }
+    } catch (e) { if (['SCAN_LIMIT', 'SCAN_TIMEOUT', 'CANCELED'].includes(e.code)) throw e; issue(path, e.code === 'EACCES' ? 'Permission denied. Grant access in macOS Privacy settings.' : e.message, e.code); }
   }
   function files(root, visit, depth = 0, seen = new Set()) {
     attempt(root, () => {
-      if (!exists(root)) return;
-      const real = canonical(root);
+      if (!diskExists(root)) return;
+      const real = resolvePath(root);
       if (!allowedRoots.some(r => inside(real, r))) { issue(root, 'Symbolic link target is outside selected folders.', 'SYMLINK_BOUNDARY'); return; }
       if (seen.has(real)) return; seen.add(real);
       if (depth > 16) { incomplete = true; issue(root, 'Depth limit reached; add this folder as a scan root.', 'SCAN_LIMIT'); return; }
-      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      for (const entry of list(root, { withFileTypes: true })) {
         check(root);
         if (SKIP.has(entry.name) || entry.name.startsWith('.aios-transfer-') || prefs.exclusions?.includes(entry.name)) continue;
         const path = join(root, entry.name);
         attempt(path, () => {
-          const st = entry.isSymbolicLink() ? fs.statSync(path) : entry;
+          const st = entry.isSymbolicLink() ? stat(path) : entry;
           if (st.isDirectory()) files(path, visit, depth + 1, seen);
           else if (st.isFile()) visit(path);
         });
@@ -168,7 +174,7 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
     // Native skill roots only: do not traverse cache, template or plugin folders.
     const skillRoot = join(base, 'skills');
     attempt(skillRoot, () => {
-      if (exists(skillRoot)) for (const entry of fs.readdirSync(skillRoot, { withFileTypes: true })) {
+      if (diskExists(skillRoot)) for (const entry of list(skillRoot, { withFileTypes: true })) {
         check(skillRoot);
         if (!entry.name.startsWith('.') && (entry.isDirectory() || entry.isSymbolicLink())) add(join(skillRoot, entry.name, 'SKILL.md'), 'skills', name, project);
       }
@@ -176,8 +182,8 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
   }
   const visitedProjects = new Set();
   function project(root) {
-    const real = canonical(root);
-    if (visitedProjects.has(real) || nativeRoots.some(r => inside(real, r)) || inside(real, canonical(join(home, '.aios')))) return;
+    const real = resolvePath(root);
+    if (visitedProjects.has(real) || nativeRoots.some(r => inside(real, r)) || inside(real, resolvePath(join(home, '.aios')))) return;
     visitedProjects.add(real);
     provider(join(root, '.claude'), 'Claude Code', root);
     provider(join(root, '.codex'), 'Codex', root);
@@ -194,17 +200,17 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
   const indexed = new Set();
   function index(root, depth = 0) {
     attempt(root, () => {
-      if (!exists(root)) { issue(root, 'Selected folder no longer exists.', 'NOT_FOUND'); return; }
-      const real = canonical(root);
+      if (!diskExists(root)) { issue(root, 'Selected folder no longer exists.', 'NOT_FOUND'); return; }
+      const real = resolvePath(root);
       if (indexed.has(real)) return;
       if (!allowedRoots.some(r => inside(real, r))) { issue(root, 'Symbolic link target is outside selected folders.', 'SYMLINK_BOUNDARY'); return; }
-      if (nativeRoots.some(r => inside(real, r)) || inside(real, canonical(join(home, '.aios')))) return;
+      if (nativeRoots.some(r => inside(real, r)) || inside(real, resolvePath(join(home, '.aios')))) return;
       if (depth > 16) { issue(root, 'Depth limit reached; select this folder directly.', 'SCAN_LIMIT'); return; }
       indexed.add(real);
-      const directory = fs.opendirSync(root);
+      const directory = openDirectory(root), nextEntry = io(() => directory.readSync());
       try {
         let entry;
-        while ((entry = directory.readSync())) {
+        while ((entry = nextEntry())) {
           // Ordinary files require no stat/content read. Bound actual directory
           // and native-resource work, while checking time/cancellation for every
           // entry. Stream enumeration instead of retaining enormous listings.
@@ -213,10 +219,10 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
           if (SKIP.has(entry.name) || entry.name.startsWith('.aios-transfer-') || PROVIDER_DIRS.has(entry.name) || prefs.exclusions?.includes(entry.name)) continue;
           const path = join(root, entry.name);
           attempt(path, () => {
-            if (entry.isDirectory() || entry.isSymbolicLink() && fs.statSync(path).isDirectory()) index(path, depth + 1);
+            if (entry.isDirectory() || entry.isSymbolicLink() && stat(path).isDirectory()) index(path, depth + 1);
           });
         }
-      } finally { directory.closeSync(); }
+      } finally { io(() => directory.closeSync())(); }
     });
   }
   {
@@ -241,9 +247,9 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
     else {
       try {
         const path = item.kind === 'skills' ? join(saved.parkPath, 'SKILL.md') : saved.parkPath;
-        const real = canonical(path);
-        if (!inside(real, canonical(join(home, '.aios'))) && !allowedRoots.some(root => inside(real, root))) fail('READ_ONLY', 'Parked link target is outside selected folders.');
-        const content = readText(real);
+        const real = resolvePath(path);
+        if (!inside(real, resolvePath(join(home, '.aios'))) && !allowedRoots.some(root => inside(real, root))) fail('READ_ONLY', 'Parked link target is outside selected folders.');
+        const content = readFile(real);
         resources.push({ ...item, revision: content.revision, bytes: Buffer.byteLength(content.content), parked: true });
       } catch (e) { issue(item.path, `Parked resource cannot be read: ${e.code || e.message}`); }
     }

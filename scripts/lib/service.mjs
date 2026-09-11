@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Storage, exists, canonical, inside, readText, fail, hash, MAX_BYTES, atomicWrite } from './storage.mjs';
 import { discover, DEFAULT_PREFS, providerPaths, resourceId } from './discovery.mjs';
-import { validate, parseConfig, jsonText, validateMcp, mcpEnabledToml, appendMcpToml, editJson, jsonValueText, editTomlValue } from './formats.mjs';
+import { validate, parseConfig, jsonText, validateMcp, mcpEnabledToml, appendMcpToml, editJson, jsonValueText, editTomlValue, suggestFrontmatterRepair } from './formats.mjs';
 import { transferPlan, applyTransfer, bundleInventory } from './transfers.mjs';
 
 const INITIAL = { version: 2, roots: null, preferences: DEFAULT_PREFS, parked: {}, profiles: [], prompts: [], activeProfile: null };
@@ -32,7 +32,7 @@ export function createService(options = {}) {
   };
   const scan = state => {
     snapshot = discover({ home, env, roots: state.roots, prefs: { ...DEFAULT_PREFS, ...state.preferences }, parked: state.parked,
-      managedRoots: options.managedRoots, progress: options.progress, canceled: options.canceled, maxEntries: options.maxEntries, maxMs: options.maxMs });
+      managedRoots: options.managedRoots, progress: options.progress, canceled: options.canceled, maxEntries: options.maxEntries, maxMs: options.maxMs, now: options.now });
     const legacy = state.legacyImported ? [] : ['disabled-mcp.json', 'disabled-skills', 'disabled-commands', 'disabled-agents'].filter(n => exists(store.privatePath(n)));
     if (legacy.length) snapshot.issues.push({ path: store.dir, code: 'LEGACY_DATA', message: `Legacy disabled data retained (${legacy.join(', ')}). Use Import legacy data in Settings; original files are kept.` });
     return { ...snapshot, preferences: state.preferences, profiles: state.profiles.map(p => ({ ...p })), activeProfile: state.activeProfile, prompts: state.prompts };
@@ -291,6 +291,14 @@ export function createService(options = {}) {
       if (args.previewRevision !== preview.previewRevision) fail('CONFLICT', 'Project settings changed. Review a fresh preview.');
       state.activeProfile = null;
       saveState(`${args.action} MCP ${preview.name} in project`, state, [write]); return scan(state);
+    }
+    if (operation === 'resource.repair.preview') {
+      const r = find(args.id, args.parked); writable(r, state);
+      if (!['skills', 'agents', 'commands', 'memory'].includes(r.kind) || !/\.(md|mdc)$/.test(r.path)) fail('UNSUPPORTED', 'Select a Markdown resource with a YAML header.');
+      const file = contentFor(r, state); revision(file, args.revision);
+      const repair = suggestFrontmatterRepair(file.content);
+      if (!repair) fail('UNSUPPORTED', 'No unambiguous automatic repair is available. Edit the header using the reported line and compare your changes before saving.');
+      return { ...repair, revision: file.revision };
     }
     if (operation === 'resource.write') {
       const r = find(args.id, args.parked); revision(r, args.revision);

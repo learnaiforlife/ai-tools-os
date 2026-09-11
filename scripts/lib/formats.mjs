@@ -19,6 +19,27 @@ export function frontmatter(raw) {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) fail('INVALID', 'Frontmatter must be a YAML mapping.');
   return { metadata, body: raw.slice(match[0].length) };
 }
+// Propose a narrowly scoped repair, never an implicit parsing fallback. Only
+// ambiguous colons in single-line name/description values can be quoted here.
+export function suggestFrontmatterRepair(raw) {
+  try { frontmatter(raw); return null; } catch { /* Require an invalid header. */ }
+  const match = raw.match(/^(\uFEFF?---\r?\n)([\s\S]*?)(\r?\n---(?:\r?\n|$))/);
+  if (!match) return null;
+  const lines = match[2].split('\n'), changedLines = [];
+  const header = lines.map((line, i) => {
+    const field = line.match(/^(name|description):([ \t]+)([^\r]*)(\r?)$/);
+    if (!field) return line;
+    const value = field[3].trimEnd();
+    if (!/:([ \t]|$)/.test(value) || /^["'[{>|!&*#%@`]/.test(value) || /\s#/.test(value)
+      || i + 1 < lines.length && /^[ \t]+\S/.test(lines[i + 1])) return line;
+    changedLines.push(i + 2);
+    return field[1] + ':' + field[2] + JSON.stringify(value) + field[3].slice(value.length) + field[4];
+  }).join('\n');
+  if (!changedLines.length) return null;
+  const content = match[1] + header + match[3] + raw.slice(match[0].length);
+  try { frontmatter(content); } catch { return null; }
+  return { content, changedLines };
+}
 export function parseConfig(raw, path) {
   try {
     if (!path.endsWith('.toml')) jsonTree(raw);
