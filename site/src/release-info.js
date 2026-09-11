@@ -1,7 +1,7 @@
 // Release metadata describes a published build, never the visitor's machine.
 export function getReleaseInfo(release) {
   if (!release.available) return { downloads: [], status: `Version ${release.version} is undergoing release validation. Downloads will appear here when a build is published.`, beta: false, needsApproval: false };
-  if (!['beta', 'stable'].includes(release.channel) || !['unsigned', 'developer-id-notarized'].includes(release.verification)) throw Error('Specify the release channel and signing status.');
+  if (!['beta', 'stable'].includes(release.channel) || !['unsigned', 'ad-hoc', 'developer-id-notarized'].includes(release.verification)) throw Error('Specify the release channel and signing status.');
   const signed = release.verification === 'developer-id-notarized';
   if (release.channel === 'stable' && !signed) throw Error('Stable releases require Developer ID signing and notarization.');
   const dmgs = release.artifacts.filter(a => a.name.endsWith('.dmg'));

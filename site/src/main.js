@@ -25,6 +25,6 @@ for (const selector of ['#downloads', '#install-downloads']) {
 for (const selector of ['#release-status', '#install-status']) document.querySelector(selector).textContent = info.status;
 const firstLaunch = document.querySelector('#first-launch');
 if (info.needsApproval) {
-  firstLaunch.append('This beta is not Apple notarized. If macOS blocks it and you trust this download, follow ');
+  firstLaunch.append('This beta is not Apple notarized. If macOS blocks it, click Done, open System Settings → Privacy & Security, then choose Open Anyway for AI Tools OS and approve the next prompt. Only do this for a download you trust. See ');
   const guide = document.createElement('a'); guide.href = 'https://support.apple.com/en-us/102445'; guide.textContent = 'Apple’s instructions for opening an app from an unidentified developer'; firstLaunch.append(guide, '.');
 } else firstLaunch.textContent = 'Review the macOS first-launch prompt before opening the app.';

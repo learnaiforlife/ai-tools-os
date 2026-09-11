@@ -58,7 +58,7 @@ Safe whole-directory parking currently requires the same filesystem as `~/.aios`
 ## Packaging and release
 
 ```sh
-npm run dist:mac:local       # unsigned local tests, both architectures
+npm run dist:mac:beta        # ad-hoc signing + package tests, both architectures
 node scripts/test-package.mjs
 node scripts/test-package.mjs release-local x64 # optional Intel execution under Rosetta on Apple Silicon
 npm run dist:mac             # clean commit + signing + notarization + validation

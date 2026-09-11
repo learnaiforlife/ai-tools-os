@@ -1,23 +1,23 @@
 {
   "available": true,
   "channel": "beta",
-  "verification": "unsigned",
-  "version": "1.1.0",
+  "verification": "ad-hoc",
+  "version": "1.1.1",
   "minMacOS": "13.0",
   "artifacts": [
     {
-      "name": "AI-Tools-OS-1.1.0-arm64.dmg",
+      "name": "AI-Tools-OS-1.1.1-arm64.dmg",
       "arch": "arm64",
-      "size": 128908493,
-      "sha512": "UHy0AXCKiqg20aflyduHEWLMQfJS3D1l6euTdphlTe7XXzrjiN2002/cgWTvmHS4h7qMoHhLojl/yRzThprKGw==",
-      "url": "https://dzqec0d3bjo9ze9s.public.blob.vercel-storage.com/aios/1.1.0-beta/f1e2f66cb0b30c8d/AI-Tools-OS-1.1.0-arm64.dmg"
+      "size": 127714961,
+      "sha512": "i1N+RPB2cXtxW0WNg7kgoWCwfW89fn9XcO43xPswD5zY4tfvcQkFFB7/t1TOvdt5B08ZOrhUF1lzm4sHX31MiQ==",
+      "url": "https://dzqec0d3bjo9ze9s.public.blob.vercel-storage.com/aios/1.1.1-beta/af43195f2cf0f01a/AI-Tools-OS-1.1.1-arm64.dmg"
     },
     {
-      "name": "AI-Tools-OS-1.1.0-x64.dmg",
+      "name": "AI-Tools-OS-1.1.1-x64.dmg",
       "arch": "x64",
-      "size": 133155384,
-      "sha512": "fUmuk2Ogh3dVC8CFLFfZAeYarmX+2KqLP4S/sZyA/+K8EaGo1e2LKkofrNShFTjCkfwqWS+U7Ji3OGgNAiN2Jg==",
-      "url": "https://dzqec0d3bjo9ze9s.public.blob.vercel-storage.com/aios/1.1.0-beta/b9210306e97a170c/AI-Tools-OS-1.1.0-x64.dmg"
+      "size": 134968509,
+      "sha512": "6fy5kFL+HPP1zY+wBqjJ8urFxQ+J3ONWXx+fnjK8GSzMRtMsAMVM7T9zjDBObg7kPTEBU0fVQfEvHnRpAWoiyw==",
+      "url": "https://dzqec0d3bjo9ze9s.public.blob.vercel-storage.com/aios/1.1.1-beta/f3d04d199d6dc4a0/AI-Tools-OS-1.1.1-x64.dmg"
     }
   ]
 }
