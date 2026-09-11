@@ -15,6 +15,8 @@ npm run dev             # Vite and Electron, with private native access
 npm run electron:start  # build and open the production interface
 npm run check           # lint, backend regression tests, app/site builds
 npm run test:desktop    # real Electron UI with an isolated temporary home
+npm run test:conversion # actual fresh-runtime installation and document extraction
+npm run test:labs:desktop # new UI workflows; run test:conversion first
 ```
 
 `npm run dev:web` and `npm run preview` are layout previews. They intentionally reject filesystem APIs; use Electron to work with machine configuration. Development and installed Electron builds use the same preload, IPC validation, worker and service.
@@ -37,11 +39,17 @@ npm run test:desktop    # real Electron UI with an isolated temporary home
 - Install a tested, self-contained Claude statusline after reviewing both current files and the generated script.
 - Persist appearance, scan roots, exclusions, provider paths and refresh intervals. Detect external executables without running them.
 
+## Evaluation and conversion workspaces
+
+Version 1.3.0 adds Skill Lab (paired evaluations, A/B judging, trigger tests and improvement/retest), Memory Review (local/contextual findings and reviewed edits/moves), and local MarkItDown conversion with automatic runtime setup. AI operations use an installed, authenticated Claude Code CLI. They run only when requested.
+
+Read the [usage guide](docs/EVALUATION_GUIDE.md), [design](docs/EVALUATION_DESIGN.md) and [review/acceptance record](docs/EVALUATION_REVIEW.md) for capabilities, validation and remaining live-model acceptance.
+
 ## Explicit boundaries
 
 Inventory is **configured state**, not a claim that a provider has connected or loaded a resource. Project trust, precedence, remote/managed policy, actual token usage and runtime health remain provider responsibilities. Managed Claude sources are read-only. Plugin caches, remote settings and session stores are outside the current adapters.
 
-Runtime start/stop controls, sandbox enforcement, generated memory suggestions, skill evaluation, fake historical charts and conversion queues from the prototype are not exposed as working features. See the resolution register for the distinction between fixes and retired capabilities.
+Prototype runtime start/stop controls, provider sandbox controls and fabricated historical charts remain retired. The new evaluation runner supports text and confined file tools; shell commands, MCPs and external application tasks are unavailable in this release. Conversion has explicit document-format and extraction limits; see the evaluation guide.
 
 ## Filesystem safeguards
 

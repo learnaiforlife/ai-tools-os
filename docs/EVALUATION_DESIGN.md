@@ -1,6 +1,6 @@
 # Evaluation and conversion workspaces
 
-Status: implementation in progress, 2026-09-11. This document defines acceptance criteria; it is not a completion report.
+Status: implemented, 2026-09-11. Automated and packaged acceptance validation is recorded in `EVALUATION_REVIEW.md`. Live model acceptance remains pending a refreshed Claude Code login. This document defines the design and acceptance criteria.
 
 ## Scope
 

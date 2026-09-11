@@ -1,6 +1,6 @@
 # Active application modules
 
-The production entry graph is `main.jsx` → `app.jsx` → `workbench.jsx`, with `api.js`, `icons.jsx`, `styles.css` and `workbench.css`.
+The production entry graph is `main.jsx` → `app.jsx` → `workbench.jsx`, with `api.js`, `icons.jsx`, `styles.css` and `workbench.css`. `workbench.jsx` imports `labs.jsx`/`labs.css` for Skill Lab, Memory Review and Markdown conversion, along with the shared workbench UI and resource actions.
 
 The other page modules are the previous prototype. They are retained for design/reference because this workspace already contained substantial uncommitted work before the hardening pass. They are **not imported, built, packaged, or presented as implemented functionality**. Their simulated scores, runtime controls, sample records and toast-only actions must not be reintroduced into the production graph.
 
