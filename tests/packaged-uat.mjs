@@ -243,7 +243,7 @@ export async function runPackagedUat({ session, home, results, output }) {
       await button('Save changes'); await finish();
       assert.equal(fs.readFileSync(path, 'utf8'), original.replace('Plan tasks: carefully', '"Plan tasks: carefully"'));
       assert.ok(!(await mainText()).includes('Resource metadata needs review'));
-      await nav('History & recovery'); assert.ok((await mainText()).includes('fresh-machine'));
+      await nav('History & recovery'); await wait("document.querySelector('main').innerText.includes('fresh-machine')");
     } finally { fs.rmSync(dirname(path), { recursive: true, force: true }); await sync(); }
   });
   const reviewTransfer = async () => {
