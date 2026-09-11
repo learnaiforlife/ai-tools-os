@@ -2,22 +2,22 @@
   "available": true,
   "channel": "beta",
   "verification": "ad-hoc",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minMacOS": "13.0",
   "artifacts": [
     {
-      "name": "AI-Tools-OS-1.2.0-arm64.dmg",
+      "name": "AI-Tools-OS-1.2.1-arm64.dmg",
       "arch": "arm64",
-      "size": 127712337,
-      "sha512": "M0s9/6XNHcKVCR0tDhCzq2fbwTmRy/vTMvsiI7Xq4KSVCJzrAtsMUfx0rEgmLAPrjDzo0pGYnf0zE/Kqy3dMgw==",
-      "url": "https://github.com/learnaiforlife/ai-tools-os/releases/download/v1.2.0-beta/AI-Tools-OS-1.2.0-arm64.dmg"
+      "size": 127718413,
+      "sha512": "X5/K3s3fhgKvyGgHENR/IKVvaHg7Ym+QJwPohD6AwUAEduDpkS8+zSaEODjE43DopAbEfKzaCBiUcQ9KHBKYKQ==",
+      "url": "https://github.com/learnaiforlife/ai-tools-os/releases/download/v1.2.1-beta/AI-Tools-OS-1.2.1-arm64.dmg"
     },
     {
-      "name": "AI-Tools-OS-1.2.0-x64.dmg",
+      "name": "AI-Tools-OS-1.2.1-x64.dmg",
       "arch": "x64",
-      "size": 134996152,
-      "sha512": "0uhUbUt1T1mijotuL0CrHCh084q+IgRmDACV8b5XuojV7I4JRLM8b60nRwy+IlXBLwpIYZAaClyZZvd4LvAWMg==",
-      "url": "https://github.com/learnaiforlife/ai-tools-os/releases/download/v1.2.0-beta/AI-Tools-OS-1.2.0-x64.dmg"
+      "size": 134995722,
+      "sha512": "59PLHMmE1DSK/v0Wt8vuUtGN14butpZBYb8k5Ww/NrNo/wO1zDCIhk7a2s6XKci9bFjaaGCWVRma6A6lPoNGNg==",
+      "url": "https://github.com/learnaiforlife/ai-tools-os/releases/download/v1.2.1-beta/AI-Tools-OS-1.2.1-x64.dmg"
     }
   ]
 }
