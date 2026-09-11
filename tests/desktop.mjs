@@ -21,7 +21,7 @@ fs.mkdirSync(join(fixtureApp, 'scripts')); fs.symlinkSync(join(repo, 'scripts/li
 fs.cpSync(join(repo, 'dist'), join(fixtureApp, 'dist'), { recursive: true }); fs.symlinkSync(join(repo, 'node_modules'), join(fixtureApp, 'node_modules'));
 app.setPath('userData', join(base, 'electron-data')); app.setPath('sessionData', join(base, 'electron-session')); app.setPath('logs', join(base, 'logs'));
 app.commandLine.appendSwitch('disable-gpu');
-let win, mainModule;
+let win, mainModule, loaded = false;
 let copied;
 // Exercise the real IPC route without modifying the user's system clipboard.
 const nativeCopy = clipboard.writeText;
@@ -34,14 +34,17 @@ dialog.showMessageBox = async (_window, options) => {
 };
 const errors = [], results = [];
 app.on('browser-window-created', (_, window) => {
-  win = window; window.on('show', () => window.hide());
+  win = window; loaded = false; window.on('show', () => window.hide());
+  window.webContents.on('did-start-loading', () => { loaded = false; });
+  window.webContents.on('did-finish-load', () => { loaded = true; });
   window.webContents.on('console-message', (event, level, message) => {
-    const text = event.message || message; if ((event.level || level) === 'error' || level >= 3) errors.push(text);
+    const text = event.message || message, severity = event.level ?? level;
+    if (severity === 'error' || severity >= 3) errors.push(text);
   });
 });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const js = code => win.webContents.executeJavaScript(code);
-async function waitFor(code, ms = 15000) { const end = Date.now() + ms; while (Date.now() < end) { if (win && !win.isDestroyed() && await js(code).catch(() => false)) return; await sleep(40); } throw Error('Timed out: ' + code); }
+async function waitFor(code, ms = 15000) { const end = Date.now() + ms; while (Date.now() < end) { if (loaded && win && !win.isDestroyed() && await js(code).catch(() => false)) return; await sleep(40); } throw Error('Timed out: ' + code); }
 async function click(text, selector = 'button') { await js(`(()=>{const el=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!el)throw Error('Missing button: '+${JSON.stringify(text)});if(el.disabled)throw Error('Disabled button');el.click()})()`); await sleep(40); }
 async function nav(text) { await js(`(()=>{const el=[...document.querySelectorAll('.wb-sidebar nav button')].find(e=>e.innerText.startsWith(${JSON.stringify(text)}));if(!el)throw Error('Missing navigation');el.click()})()`); await sleep(70); }
 async function value(selector, value) { await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing input');Object.getOwnPropertyDescriptor(e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`); await sleep(40); }

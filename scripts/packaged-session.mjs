@@ -18,7 +18,7 @@ export async function packagedSession({ exe, home, userData, cwd }) {
     cwd, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '', socket, ended = false, startupError, serial = 0;
-  const rendererErrors = [];
+  const rendererErrors = [], loadedFrames = new Set();
   const pending = new Map();
   const exited = new Promise(resolveExit => child.once('exit', () => { ended = true; resolveExit(); }));
   child.on('error', error => { startupError = error; });
@@ -58,6 +58,7 @@ export async function packagedSession({ exe, home, userData, cwd }) {
     socket.addEventListener('message', event => {
       const message = JSON.parse(String(event.data)), entry = pending.get(message.id);
       if (entry) { pending.delete(message.id); entry.resolve(message); }
+      if (message.method === 'Page.lifecycleEvent' && message.params.name === 'load') loadedFrames.add(`${message.params.frameId}:${message.params.loaderId}`);
       if (message.method === 'Runtime.exceptionThrown') rendererErrors.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
       if (message.method === 'Log.entryAdded' && message.params.entry.level === 'error') rendererErrors.push(message.params.entry.text);
       if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') rendererErrors.push(message.params.args.map(a => a.value || a.description).join(' '));
@@ -77,6 +78,19 @@ export async function packagedSession({ exe, home, userData, cwd }) {
       if (response.exceptionDetails) throw Error(JSON.stringify(response.exceptionDetails));
       return response.result.value;
     };
+    // Enabling Runtime during the initial empty document can force Electron to
+    // initialize a preload before its navigation startup data exists. Observe
+    // the committed document's load event first, without evaluating JavaScript.
+    // Enabling lifecycle events also delivers the current loader's past events.
+    await command('Page.enable'); await command('Page.setLifecycleEventsEnabled', { enabled: true });
+    const loadEnd = Date.now() + 20000;
+    let loaded = false;
+    while (Date.now() < loadEnd) {
+      const { frameTree: { frame } } = await command('Page.getFrameTree');
+      if (frame.url.startsWith('aios://app/') && loadedFrames.has(`${frame.id}:${frame.loaderId}`)) { loaded = true; break; }
+      await pause(80);
+    }
+    if (!loaded) throw Error('Packaged document did not finish loading.');
     await command('Runtime.enable'); await command('Log.enable');
     let rendered = false, view;
     for (let n = 0; n < 150; n++) {
