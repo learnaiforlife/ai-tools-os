@@ -82,7 +82,7 @@ async function run() {
       await value('[aria-label="Scope"]', 'all');
     });
     await probe('full skill editor saves real bytes and closes only after success', async () => {
-      await click('User skill'); await waitFor("document.querySelector('[aria-label=\"File content\"]')?.value.length > 4000");
+      await click('User skill'); await waitFor("!!document.querySelector('.markdown-reader')"); await click('Edit source'); await waitFor("document.querySelector('[aria-label=\"File content\"]')?.value.length > 4000");
       const original = fs.readFileSync(userSkill, 'utf8'); assert.equal(await js("document.querySelector('[aria-label=\"File content\"]').value"), original);
       await value('[aria-label="File content"]', original + 'saved by UI'); await click('Compare changes');
       assert.ok((await js("document.querySelector('.wb-diff').innerText")).includes('saved by UI')); await click('Editor');
@@ -90,7 +90,7 @@ async function run() {
       assert.equal(fs.readFileSync(userSkill, 'utf8'), original + 'saved by UI');
     });
     await probe('stale save fails visibly and keeps the complete draft', async () => {
-      await click('User skill'); await waitFor("!!document.querySelector('[aria-label=\"File content\"]')");
+      await click('User skill'); await waitFor("!!document.querySelector('.markdown-reader')"); await click('Edit source'); await waitFor("!!document.querySelector('[aria-label=\"File content\"]')");
       await value('[aria-label="File content"]', 'unsaved draft'); fs.writeFileSync(userSkill, 'external edit'); await click('Save changes');
       await waitFor("document.querySelector('dialog').innerText.includes('changed on disk')");
       assert.equal(fs.readFileSync(userSkill, 'utf8'), 'external edit'); assert.equal(await js("document.querySelector('[aria-label=\"File content\"]').value"), 'unsaved draft');
@@ -101,7 +101,7 @@ async function run() {
       assert.equal(await js("document.querySelectorAll('.wb-resource').length"), 3);
     });
     await probe('new skill dialog writes native full content to chosen provider', async () => {
-      await click('New skills'); await value('dialog input', 'created'); await value('dialog textarea', '---\nname: Created in UI\n---\nPersistent');
+      await click('New skills'); await value('dialog input', 'created'); await value('[aria-label="New resource content"]', '---\nname: Created in UI\n---\nPersistent');
       await click('Create resource'); await waitFor("!document.querySelector('dialog')"); await idle();
       assert.ok(fs.readFileSync(join(home, '.claude/skills/created/SKILL.md'), 'utf8').includes('Persistent'));
     });
@@ -135,11 +135,11 @@ async function run() {
       await nav('Skills');
       await js("[...document.querySelectorAll('.wb-resource')].find(r=>r.innerText.includes('Created in UI')).querySelector('[aria-label^=Disable]').click()"); await idle();
       const path = join(home, '.claude/skills/created/SKILL.md'); write(path, '---\nname: Live replacement\n---\nLive bytes');
-      await click('Sync'); await idle(); await click('Created in UI');
+      await click('Sync'); await idle(); await click('Created in UI'); await waitFor("!!document.querySelector('.markdown-reader')"); await click('Edit source');
       await waitFor("!!document.querySelector('dialog textarea')");
       assert.ok((await js("document.querySelector('dialog textarea').value")).includes('Persistent'));
       assert.ok((await js("document.querySelector('dialog').innerText")).includes('Parked copy'));
-      await value('dialog textarea', '---\nname: Created in UI\n---\nEdited parked bytes'); await click('Save changes');
+      await value('[aria-label="File content"]', '---\nname: Created in UI\n---\nEdited parked bytes'); await click('Save changes');
       await waitFor("!document.querySelector('dialog')"); await idle(); assert.ok(fs.readFileSync(path, 'utf8').includes('Live bytes'));
       fs.rmSync(dirname(path), { recursive: true }); await click('Sync'); await idle();
       await js("[...document.querySelectorAll('.wb-resource')].find(r=>r.innerText.includes('Created in UI')).querySelector('[aria-label^=Restore]').click()"); await idle();
@@ -160,8 +160,8 @@ async function run() {
       assert.equal(JSON.parse(fs.readFileSync(join(home, '.claude/settings.json'))).model, 'updated-model');
     });
     await probe('preferences persist through navigation and window recreation', async () => {
-      await nav('Settings'); await value('.wb-form-grid select', 'light'); await click('Save preferences'); await idle();
-      await nav('Overview'); await nav('Settings'); assert.equal(await js("document.querySelector('.wb-form-grid select').value"), 'light');
+      await nav('Settings'); await value('[aria-label="Appearance"]', 'light'); await click('Save preferences'); await idle();
+      await nav('Overview'); await nav('Settings'); assert.equal(await js(`document.querySelector('[aria-label="Appearance"]').value`), 'light');
       await js("localStorage.setItem('stable-origin','retained')"); const first = win.webContents.getURL(); const old = win; win = null; old.close(); await sleep(100); app.emit('activate');
       await waitFor("document.querySelector('.wb-status')?.textContent.includes('Inventory refreshed')"); assert.equal(win.webContents.getURL(), first);
       assert.equal(await js("localStorage.getItem('stable-origin')"), 'retained'); assert.equal(await js("document.documentElement.getAttribute('data-theme')"), 'light');
@@ -172,7 +172,7 @@ async function run() {
       assert.ok((await js("document.querySelector('main').innerText")).includes('Get started')); assert.equal(fs.readFileSync(join(home, '.claude.json'), 'utf8'), before);
     });
     await probe('prompt creation is real and accessible dialog traps focus', async () => {
-      await nav('Prompt library'); await click('New prompt'); await value('dialog input', 'Saved prompt'); await value('dialog textarea', 'Hello {{name}}');
+      await nav('Prompt library'); await click('New prompt'); await value('dialog input', 'Saved prompt'); await value('[aria-label="Prompt content"]', 'Hello {{name}}');
       assert.equal(await js("document.querySelector('dialog').open"), true); assert.ok(await js("document.querySelector('dialog').contains(document.activeElement)"));
       await click('Save prompt'); await waitFor("!document.querySelector('dialog')"); await idle();
       assert.ok((await js("document.querySelector('main').innerText")).includes('Saved prompt'));

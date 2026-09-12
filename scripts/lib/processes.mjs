@@ -4,7 +4,7 @@ import { join, isAbsolute } from 'node:path';
 import { fail } from './storage.mjs';
 
 export function executable(name, home, env = process.env) {
-  const paths = [...new Set([...(env.PATH || '').split(':').filter(isAbsolute), join(home, '.local/bin'), join(home, '.npm-global/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin'])];
+  const paths = [...new Set([...(env.PATH || '').split(':').filter(isAbsolute), join(home, '.local/bin'), join(home, '.npm-global/bin'), join(home, '.cargo/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin'])];
   return paths.map(p => join(p, name)).find(p => { try { return fs.statSync(p).isFile() && !!(fs.statSync(p).mode & 0o111); } catch { return false; } }) || null;
 }
 

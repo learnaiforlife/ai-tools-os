@@ -1,0 +1,685 @@
+{
+  "recordedAt": "2026-09-12T06:12:32.331058+00:00",
+  "version": "1.4.0",
+  "automated": {
+    "command": "npm run check",
+    "counts": {
+      "tests": 148,
+      "pass": 148,
+      "fail": 0
+    },
+    "lint": true,
+    "appBuild": true,
+    "siteBuild": true
+  },
+  "desktop": {
+    "desktop": {
+      "passed": 21,
+      "rendererErrors": [],
+      "results": [
+        {
+          "name": "private desktop connection loads actual fixture inventory",
+          "passed": true
+        },
+        {
+          "name": "IPC rejects subframes and untrusted origins",
+          "passed": true
+        },
+        {
+          "name": "native clipboard route writes requested text and rejects oversized input",
+          "passed": true
+        },
+        {
+          "name": "all screens use real global scope and selected project",
+          "passed": true
+        },
+        {
+          "name": "full skill editor saves real bytes and closes only after success",
+          "passed": true
+        },
+        {
+          "name": "stale save fails visibly and keeps the complete draft",
+          "passed": true
+        },
+        {
+          "name": "sync refreshes the visible resource list immediately",
+          "passed": true
+        },
+        {
+          "name": "new skill dialog writes native full content to chosen provider",
+          "passed": true
+        },
+        {
+          "name": "MCP disable and restore mutate actual source and shared security inventory",
+          "passed": true
+        },
+        {
+          "name": "native MCP inspector preserves arguments and guards credential reveal",
+          "passed": true
+        },
+        {
+          "name": "profile review shows exact paths and rejects edits made after preview",
+          "passed": true
+        },
+        {
+          "name": "collision inspection opens the selected parked skill and never edits the live replacement",
+          "passed": true
+        },
+        {
+          "name": "Cursor user-rule creation explains its limitation before writing",
+          "passed": true
+        },
+        {
+          "name": "config editor displays and saves the selected native config",
+          "passed": true
+        },
+        {
+          "name": "preferences persist through navigation and window recreation",
+          "passed": true
+        },
+        {
+          "name": "onboarding guide cannot mutate MCP state or crash the app",
+          "passed": true
+        },
+        {
+          "name": "prompt creation is real and accessible dialog traps focus",
+          "passed": true
+        },
+        {
+          "name": "external tools report detected executables without fabricated installs",
+          "passed": true
+        },
+        {
+          "name": "history exposes real backups and all buttons have accessible text",
+          "passed": true
+        },
+        {
+          "name": "missing interface files produce a recovery dialog and reload successfully after repair",
+          "passed": true
+        },
+        {
+          "name": "no unexpected renderer errors occurred during desktop acceptance",
+          "passed": true
+        }
+      ]
+    },
+    "lab-desktop": {
+      "passed": 18,
+      "rendererErrors": [],
+      "results": [
+        {
+          "name": "Memory Review finds exact duplicates and applies a reviewed edit with a backup",
+          "passed": true
+        },
+        {
+          "name": "Memory Review moves one section with a two-file comparison",
+          "passed": true
+        },
+        {
+          "name": "AI memory review renders contextual findings without confusing them with benchmark metrics",
+          "passed": true
+        },
+        {
+          "name": "Skill Lab runs A/B assertions and exposes measured before/after results",
+          "passed": true
+        },
+        {
+          "name": "Candidate promotion rejects external edits and preserves original data",
+          "passed": true
+        },
+        {
+          "name": "Evaluation cancellation works while other pages remain responsive",
+          "passed": true
+        },
+        {
+          "name": "Converter screen accurately describes dependency and document support",
+          "passed": true
+        },
+        {
+          "name": "Native picker, real conversion, copy-free Save As and canceled picker",
+          "passed": true
+        },
+        {
+          "name": "AI settings save locally and executable readiness is visible",
+          "passed": true
+        },
+        {
+          "name": "AI skill drafting requires a separate reviewed editor save",
+          "passed": true
+        },
+        {
+          "name": "Local-only subagent creation renders native Codex TOML",
+          "passed": true
+        },
+        {
+          "name": "Prompt creation uses AI drafts and persists a conflict revision",
+          "passed": true
+        },
+        {
+          "name": "Resource security review has local findings, validated AI evidence and context preview",
+          "passed": true
+        },
+        {
+          "name": "Skill Lab generates editable tests and supports prompt and agent selections",
+          "passed": true
+        },
+        {
+          "name": "Prompt A/B tests require variables and use the same fixture values for both versions",
+          "passed": true
+        },
+        {
+          "name": "Optional Markdown cleanup creates a separate result and retains the original extraction",
+          "passed": true
+        },
+        {
+          "name": "New pages remain usable at a narrow size in light mode",
+          "passed": true
+        },
+        {
+          "name": "New feature UAT has no renderer errors",
+          "passed": true
+        }
+      ]
+    }
+  },
+  "packages": {
+    "arm64": {
+      "version": "1.4.0",
+      "artifacts": [
+        {
+          "name": "AI-Tools-OS-1.4.0-arm64.dmg",
+          "arch": "arm64",
+          "size": 127787880,
+          "sha512": "NrkCsBCxkjtFWBM91ycpzo+gy8Yb7WAMKJh2ePBSwuTR2qgtaQ3i8GRm33jv1jApLvBm27pCQ2XZTeLkkqhGtg=="
+        },
+        {
+          "name": "AI-Tools-OS-1.4.0-arm64.zip",
+          "arch": "arm64",
+          "size": 127889066,
+          "sha512": "BYCl6WrTQgN0OwmarcsX9xN7GVtqG5qHSYev7ltQfGw5uXfzI0DYuDy7aIECA+f6IPkrVDF665IuJWiv9DVBng=="
+        },
+        {
+          "name": "AI-Tools-OS-1.4.0-x64.dmg",
+          "arch": "x64",
+          "size": 135069840,
+          "sha512": "nvkz3dVlzi3xwaastVEsiCZXXB9CjyXjFHD5vzZgfbbb+4MN8KzzQOxc3gM+oMXyvDtFGcmQPnUZlfb/0No3qA=="
+        },
+        {
+          "name": "AI-Tools-OS-1.4.0-x64.zip",
+          "arch": "x64",
+          "size": 135189945,
+          "sha512": "w+/taPgDe9PLw41PIHZ+AuDFjVtgXzaBpeLff50KFKdAIz+bqsmklOAJxHuTxVxfV/57FSEGvGITplrxIry5YA=="
+        }
+      ],
+      "bundle": [
+        {
+          "arch": "arm64",
+          "minimumMacOS": "13.0",
+          "architectures": "arm64",
+          "codeSignatureValid": true,
+          "entries": 365,
+          "comparedSourceFiles": 40,
+          "asarSha512": "fELM2hge6ocs9ovX5CUIuo4K/Ew/4Crdj6ezAfjNeMEEF7px6W2i6Fs+eKZTeYOXu+5AZ8ZNrdKQmDGejgSCEA==",
+          "zipVerified": true,
+          "dmgVerified": true
+        },
+        {
+          "arch": "x64",
+          "minimumMacOS": "13.0",
+          "architectures": "x86_64",
+          "codeSignatureValid": true,
+          "entries": 365,
+          "comparedSourceFiles": 40,
+          "asarSha512": "fELM2hge6ocs9ovX5CUIuo4K/Ew/4Crdj6ezAfjNeMEEF7px6W2i6Fs+eKZTeYOXu+5AZ8ZNrdKQmDGejgSCEA==",
+          "zipVerified": true,
+          "dmgVerified": true
+        }
+      ],
+      "smoke": {
+        "arch": "arm64",
+        "hostArch": "arm64",
+        "translated": false,
+        "origin": "aios://app",
+        "fixtureIsolated": true,
+        "interfaceRendered": true,
+        "rendererErrors": [],
+        "nativeWriteVerified": true,
+        "installedFromZip": true,
+        "reinstallVerified": true,
+        "retained": [
+          "native content",
+          "preferences",
+          "prompts",
+          "parked resources",
+          "history"
+        ]
+      },
+      "uat": [
+        {
+          "name": "packaged window renders styled content and every navigation destination",
+          "passed": true
+        },
+        {
+          "name": "provider, user/project scopes and search select the correct resources",
+          "passed": true
+        },
+        {
+          "name": "full editor preserves drafts on canceled close and stale writes",
+          "passed": true
+        },
+        {
+          "name": "commands and agents create, archive or disable, and restore native files",
+          "passed": true
+        },
+        {
+          "name": "project instructions use native filenames and reject duplicate creation",
+          "passed": true
+        },
+        {
+          "name": "invalid JSON stays in the editor and valid saves preserve unrelated settings",
+          "passed": true
+        },
+        {
+          "name": "Codex MCP creation preserves TOML comments and intact argument arrays",
+          "passed": true
+        },
+        {
+          "name": "remote MCP export redacts credentials and requires review before copying",
+          "passed": true
+        },
+        {
+          "name": "MCP cancellation, disable and restore preserve the selected native source",
+          "passed": true
+        },
+        {
+          "name": "profile review detects changed sources and applies only a refreshed preview",
+          "passed": true
+        },
+        {
+          "name": "parked skill collisions preserve both copies and render correctly in Security",
+          "passed": true
+        },
+        {
+          "name": "prompt variables, favorites, validation and deletion use real saved state",
+          "passed": true
+        },
+        {
+          "name": "history distinguishes unavailable sources from restorable native files",
+          "passed": true
+        },
+        {
+          "name": "settings protect unsaved preferences and reject nonexistent scan roots",
+          "passed": true
+        },
+        {
+          "name": "statusline preview and stale-install errors stay visible inside the modal",
+          "passed": true
+        },
+        {
+          "name": "minimum window size keeps navigation, dialogs and controls within the viewport",
+          "passed": true
+        },
+        {
+          "name": "unsupported native files report an issue without hanging the scan",
+          "passed": true
+        },
+        {
+          "name": "context estimates and actual executable discovery render without errors",
+          "passed": true
+        },
+        {
+          "name": "source errors give relevant guidance and retained data is informational",
+          "passed": true
+        },
+        {
+          "name": "fresh-machine header warnings open reviewed repair drafts without changing source until save",
+          "passed": true
+        },
+        {
+          "name": "skill transfer preview copies supporting files and History undoes the transfer",
+          "passed": true
+        },
+        {
+          "name": "bulk MCP controls change only filtered sources and restore native settings",
+          "passed": true
+        },
+        {
+          "name": "project access disables inherited Claude and Codex MCPs without removing user definitions",
+          "passed": true
+        },
+        {
+          "name": "native MCP and subagent transfers render and apply provider conversions",
+          "passed": true
+        },
+        {
+          "name": "plugin references expose native toggles and scoped transfers",
+          "passed": true
+        },
+        {
+          "name": "Memory Review finds exact duplicates and applies a reviewed edit with a backup",
+          "passed": true
+        },
+        {
+          "name": "Memory Review moves one section with a two-file comparison",
+          "passed": true
+        },
+        {
+          "name": "AI memory review renders contextual findings without confusing them with benchmark metrics",
+          "passed": true
+        },
+        {
+          "name": "Skill Lab runs A/B assertions and exposes measured before/after results",
+          "passed": true
+        },
+        {
+          "name": "Candidate promotion rejects external edits and preserves original data",
+          "passed": true
+        },
+        {
+          "name": "Evaluation cancellation works while other pages remain responsive",
+          "passed": true
+        },
+        {
+          "name": "Converter screen accurately describes dependency and document support",
+          "passed": true
+        },
+        {
+          "name": "Packaged preload accepts file drop and real MarkItDown extracts document bytes",
+          "passed": true
+        },
+        {
+          "name": "AI settings save locally and executable readiness is visible",
+          "passed": true
+        },
+        {
+          "name": "AI skill drafting requires a separate reviewed editor save",
+          "passed": true
+        },
+        {
+          "name": "Local-only subagent creation renders native Codex TOML",
+          "passed": true
+        },
+        {
+          "name": "Prompt creation uses AI drafts and persists a conflict revision",
+          "passed": true
+        },
+        {
+          "name": "Resource security review has local findings, validated AI evidence and context preview",
+          "passed": true
+        },
+        {
+          "name": "Skill Lab generates editable tests and supports prompt and agent selections",
+          "passed": true
+        },
+        {
+          "name": "Prompt A/B tests require variables and use the same fixture values for both versions",
+          "passed": true
+        },
+        {
+          "name": "Optional Markdown cleanup creates a separate result and retains the original extraction",
+          "passed": true
+        }
+      ]
+    },
+    "x64": {
+      "version": "1.4.0",
+      "artifacts": [
+        {
+          "name": "AI-Tools-OS-1.4.0-arm64.dmg",
+          "arch": "arm64",
+          "size": 127787880,
+          "sha512": "NrkCsBCxkjtFWBM91ycpzo+gy8Yb7WAMKJh2ePBSwuTR2qgtaQ3i8GRm33jv1jApLvBm27pCQ2XZTeLkkqhGtg=="
+        },
+        {
+          "name": "AI-Tools-OS-1.4.0-arm64.zip",
+          "arch": "arm64",
+          "size": 127889066,
+          "sha512": "BYCl6WrTQgN0OwmarcsX9xN7GVtqG5qHSYev7ltQfGw5uXfzI0DYuDy7aIECA+f6IPkrVDF665IuJWiv9DVBng=="
+        },
+        {
+          "name": "AI-Tools-OS-1.4.0-x64.dmg",
+          "arch": "x64",
+          "size": 135069840,
+          "sha512": "nvkz3dVlzi3xwaastVEsiCZXXB9CjyXjFHD5vzZgfbbb+4MN8KzzQOxc3gM+oMXyvDtFGcmQPnUZlfb/0No3qA=="
+        },
+        {
+          "name": "AI-Tools-OS-1.4.0-x64.zip",
+          "arch": "x64",
+          "size": 135189945,
+          "sha512": "w+/taPgDe9PLw41PIHZ+AuDFjVtgXzaBpeLff50KFKdAIz+bqsmklOAJxHuTxVxfV/57FSEGvGITplrxIry5YA=="
+        }
+      ],
+      "bundle": [
+        {
+          "arch": "arm64",
+          "minimumMacOS": "13.0",
+          "architectures": "arm64",
+          "codeSignatureValid": true,
+          "entries": 365,
+          "comparedSourceFiles": 40,
+          "asarSha512": "fELM2hge6ocs9ovX5CUIuo4K/Ew/4Crdj6ezAfjNeMEEF7px6W2i6Fs+eKZTeYOXu+5AZ8ZNrdKQmDGejgSCEA==",
+          "zipVerified": true,
+          "dmgVerified": true
+        },
+        {
+          "arch": "x64",
+          "minimumMacOS": "13.0",
+          "architectures": "x86_64",
+          "codeSignatureValid": true,
+          "entries": 365,
+          "comparedSourceFiles": 40,
+          "asarSha512": "fELM2hge6ocs9ovX5CUIuo4K/Ew/4Crdj6ezAfjNeMEEF7px6W2i6Fs+eKZTeYOXu+5AZ8ZNrdKQmDGejgSCEA==",
+          "zipVerified": true,
+          "dmgVerified": true
+        }
+      ],
+      "smoke": {
+        "arch": "x64",
+        "hostArch": "arm64",
+        "translated": true,
+        "origin": "aios://app",
+        "fixtureIsolated": true,
+        "interfaceRendered": true,
+        "rendererErrors": [],
+        "nativeWriteVerified": true,
+        "installedFromZip": true,
+        "reinstallVerified": true,
+        "retained": [
+          "native content",
+          "preferences",
+          "prompts",
+          "parked resources",
+          "history"
+        ]
+      },
+      "uat": [
+        {
+          "name": "packaged window renders styled content and every navigation destination",
+          "passed": true
+        },
+        {
+          "name": "provider, user/project scopes and search select the correct resources",
+          "passed": true
+        },
+        {
+          "name": "full editor preserves drafts on canceled close and stale writes",
+          "passed": true
+        },
+        {
+          "name": "commands and agents create, archive or disable, and restore native files",
+          "passed": true
+        },
+        {
+          "name": "project instructions use native filenames and reject duplicate creation",
+          "passed": true
+        },
+        {
+          "name": "invalid JSON stays in the editor and valid saves preserve unrelated settings",
+          "passed": true
+        },
+        {
+          "name": "Codex MCP creation preserves TOML comments and intact argument arrays",
+          "passed": true
+        },
+        {
+          "name": "remote MCP export redacts credentials and requires review before copying",
+          "passed": true
+        },
+        {
+          "name": "MCP cancellation, disable and restore preserve the selected native source",
+          "passed": true
+        },
+        {
+          "name": "profile review detects changed sources and applies only a refreshed preview",
+          "passed": true
+        },
+        {
+          "name": "parked skill collisions preserve both copies and render correctly in Security",
+          "passed": true
+        },
+        {
+          "name": "prompt variables, favorites, validation and deletion use real saved state",
+          "passed": true
+        },
+        {
+          "name": "history distinguishes unavailable sources from restorable native files",
+          "passed": true
+        },
+        {
+          "name": "settings protect unsaved preferences and reject nonexistent scan roots",
+          "passed": true
+        },
+        {
+          "name": "statusline preview and stale-install errors stay visible inside the modal",
+          "passed": true
+        },
+        {
+          "name": "minimum window size keeps navigation, dialogs and controls within the viewport",
+          "passed": true
+        },
+        {
+          "name": "unsupported native files report an issue without hanging the scan",
+          "passed": true
+        },
+        {
+          "name": "context estimates and actual executable discovery render without errors",
+          "passed": true
+        },
+        {
+          "name": "source errors give relevant guidance and retained data is informational",
+          "passed": true
+        },
+        {
+          "name": "fresh-machine header warnings open reviewed repair drafts without changing source until save",
+          "passed": true
+        },
+        {
+          "name": "skill transfer preview copies supporting files and History undoes the transfer",
+          "passed": true
+        },
+        {
+          "name": "bulk MCP controls change only filtered sources and restore native settings",
+          "passed": true
+        },
+        {
+          "name": "project access disables inherited Claude and Codex MCPs without removing user definitions",
+          "passed": true
+        },
+        {
+          "name": "native MCP and subagent transfers render and apply provider conversions",
+          "passed": true
+        },
+        {
+          "name": "plugin references expose native toggles and scoped transfers",
+          "passed": true
+        },
+        {
+          "name": "Memory Review finds exact duplicates and applies a reviewed edit with a backup",
+          "passed": true
+        },
+        {
+          "name": "Memory Review moves one section with a two-file comparison",
+          "passed": true
+        },
+        {
+          "name": "AI memory review renders contextual findings without confusing them with benchmark metrics",
+          "passed": true
+        },
+        {
+          "name": "Skill Lab runs A/B assertions and exposes measured before/after results",
+          "passed": true
+        },
+        {
+          "name": "Candidate promotion rejects external edits and preserves original data",
+          "passed": true
+        },
+        {
+          "name": "Evaluation cancellation works while other pages remain responsive",
+          "passed": true
+        },
+        {
+          "name": "Converter screen accurately describes dependency and document support",
+          "passed": true
+        },
+        {
+          "name": "Packaged preload accepts file drop and real MarkItDown extracts document bytes",
+          "passed": true
+        },
+        {
+          "name": "AI settings save locally and executable readiness is visible",
+          "passed": true
+        },
+        {
+          "name": "AI skill drafting requires a separate reviewed editor save",
+          "passed": true
+        },
+        {
+          "name": "Local-only subagent creation renders native Codex TOML",
+          "passed": true
+        },
+        {
+          "name": "Prompt creation uses AI drafts and persists a conflict revision",
+          "passed": true
+        },
+        {
+          "name": "Resource security review has local findings, validated AI evidence and context preview",
+          "passed": true
+        },
+        {
+          "name": "Skill Lab generates editable tests and supports prompt and agent selections",
+          "passed": true
+        },
+        {
+          "name": "Prompt A/B tests require variables and use the same fixture values for both versions",
+          "passed": true
+        },
+        {
+          "name": "Optional Markdown cleanup creates a separate result and retains the original extraction",
+          "passed": true
+        }
+      ]
+    }
+  },
+  "live": {
+    "claude": {
+      "passed": false,
+      "report": "live-claude.json",
+      "at": "2026-09-12T05:54:41.547Z",
+      "failure": "Claude could not complete the run (success). API Error: Opus 5 (1M context)'s safeguards flagged this message (https://www.anthropic.com/legal/aup). This sometimes happens with safe, normal conversations. Claude Code can't respond to this message with Opus 5 (1M context).\n\nTry rephrasing the request in a new session or change your model.\n\nLearn more: https://support.claude.com/en/articles/16049681\n\nDetails: `[reasoning_extraction]`\n\nRequest ID: req_011Cey2dNeyPyh56czfLi2YN\n+ actual - expected\n\n+ 'failed'\n- 'completed'\n"
+    },
+    "codex": {
+      "passed": true,
+      "report": "live-codex.json",
+      "at": "2026-09-12T05:51:45.951Z",
+      "failure": null,
+      "note": "Live run began before the final text-wrapper and UI refinements; packaged validation covers the final sources."
+    },
+    "cursor": {
+      "passed": false,
+      "report": "live-cursor.json",
+      "at": "2026-09-12T05:57:32.118Z",
+      "failure": "Cursor Agent needs authentication. Sign in with its native CLI, then start a new run.\n+ actual - expected\n\n+ 'failed'\n- 'completed'\n"
+    }
+  },
+  "deployedByThisImplementation": false
+}

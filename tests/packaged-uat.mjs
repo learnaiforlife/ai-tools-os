@@ -39,7 +39,7 @@ export async function runPackagedUat({ session, home, results, output }) {
   const close = () => button('Close', 'dialog button');
   const row = name => `[...document.querySelectorAll('.wb-resource')].find(e=>e.querySelector('.wb-resource-name').textContent===${JSON.stringify(name)})`;
   const rowButton = async (name, text) => { await js(`(()=>{const r=${row(name)};const b=r&&[...r.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!b||b.disabled)throw Error('Unavailable resource action');b.click()})()`); await pause(); };
-  const inspect = async name => { await rowButton(name, 'Inspect / edit'); await wait("!!document.querySelector('dialog')"); };
+  const inspect = async name => { await rowButton(name, 'Read / edit'); await wait("!!document.querySelector('dialog')"); await wait("!!document.querySelector('.markdown-reader, [aria-label=\"File content\"]') || document.querySelector('dialog').innerText.includes('Reveal content')"); if (await js("!!document.querySelector('.markdown-reader')")) await button('Edit source'); };
   const content = () => wait("!!document.querySelector('dialog textarea')");
   const finish = async () => { await wait("!document.querySelector('dialog')"); await idle(); };
   const mainText = () => js("document.querySelector('main').innerText");
@@ -48,13 +48,13 @@ export async function runPackagedUat({ session, home, results, output }) {
     await nav(page); await button('New ' + kind); await input('dialog input', name); await input('dialog select', provider);
     await input('dialog .wb-form-grid label:nth-child(3) select', scope);
     if (scope === 'project') await input('dialog .wb-form-grid label:nth-child(4) select', project);
-    await input('dialog textarea', body); await button('Create resource'); await finish();
+    await input('[aria-label="New resource content"]', body); await button('Create resource'); await finish();
   };
   await idle();
   await js('window.confirm=()=>true;true');
   await step('packaged window renders styled content and every navigation destination', async () => {
     assert.equal(session.rendered, true);
-    for (const page of ['Overview','Skills','MCP servers','Plugins','Memory & rules','Config files','Commands','Subagents','Prompt library','Security review','Context estimates','External tools','History & recovery','Getting started','Settings']) await nav(page);
+    for (const page of ['Overview','Skills','MCP servers','Plugins','Memory & rules','Config files','Commands','Subagents','Prompt library','Security review','Context explorer','External tools','History & recovery','Getting started','Settings']) await nav(page);
     assert.ok((await mainText()).includes(home));
   });
   await step('provider, user/project scopes and search select the correct resources', async () => {
@@ -86,7 +86,7 @@ export async function runPackagedUat({ session, home, results, output }) {
   await step('commands and agents create, archive or disable, and restore native files', async () => {
     await create('Commands','commands','uat-command','---\nname: UAT command\n---\nCommand body');
     const commandPath=join(home,'.claude/commands/uat-command.md'); assert.ok(fs.existsSync(commandPath));
-    await rowButton('UAT command','Archive'); await idle(); assert.ok(!fs.existsSync(commandPath));
+    await rowButton('UAT command','Archive'); await wait("!!document.querySelector('dialog .wb-check input')"); await js("document.querySelector('dialog .wb-check input').click()"); await button('Apply cleanup'); await finish(); assert.ok(!fs.existsSync(commandPath));
     await rowButton('UAT command','Restore'); await idle(); assert.ok(fs.existsSync(commandPath));
     await create('Subagents','agents','uat-agent','---\nname: UAT agent\ndescription: UAT\n---\nAgent body');
     const agentPath=join(home,'.claude/agents/uat-agent.md'); assert.ok(fs.existsSync(agentPath));
@@ -98,7 +98,7 @@ export async function runPackagedUat({ session, home, results, output }) {
     assert.equal(fs.readFileSync(join(project,'AGENTS.md'),'utf8'),'Project instructions');
     await button('New memory'); await input('dialog input','duplicate'); await input('dialog select','Codex');
     await input('dialog .wb-form-grid label:nth-child(3) select','project'); await input('dialog .wb-form-grid label:nth-child(4) select',project);
-    await input('dialog textarea','Should not overwrite'); await button('Create resource');
+    await input('[aria-label="New resource content"]','Should not overwrite'); await button('Create resource');
     await wait("document.querySelector('dialog').innerText.includes('already exists')"); await close();
     assert.equal(fs.readFileSync(join(project,'AGENTS.md'),'utf8'),'Project instructions');
   });
@@ -142,7 +142,7 @@ export async function runPackagedUat({ session, home, results, output }) {
   await step('parked skill collisions preserve both copies and render correctly in Security', async () => {
     await nav('Skills'); const path=join(home,'.claude/skills/uat/SKILL.md'), before=fs.readFileSync(path,'utf8');
     await rowButton('UAT skill','Disable'); await idle(); fs.mkdirSync(dirname(path)); fs.writeFileSync(path,'---\nname: Live replacement\n---\nDo not overwrite');
-    await sync(); await nav('Security review'); assert.ok((await mainText()).includes('(parked copy)'));
+    await sync(); await nav('Security review'); await button('File permissions & source details', 'main summary'); assert.ok((await mainText()).includes('(parked copy)'));
     await nav('Skills'); await rowButton('UAT skill','Restore'); await idle(); assert.ok((await mainText()).includes('Both copies were preserved'));
     assert.ok(fs.readFileSync(path,'utf8').includes('Do not overwrite')); await inspect('UAT skill'); await content();
     assert.equal(await js("document.querySelector('dialog textarea').value"),before); await close(); fs.rmSync(dirname(path),{recursive:true});
@@ -150,10 +150,10 @@ export async function runPackagedUat({ session, home, results, output }) {
     assert.equal(fs.readFileSync(join(dirname(path),'support.txt'),'utf8'),'Support file must survive parking');
   });
   await step('prompt variables, favorites, validation and deletion use real saved state', async () => {
-    await nav('Prompt library'); await button('New prompt'); await input('dialog input','UAT prompt'); await input('dialog textarea','Hello {{name}}');
+    await nav('Prompt library'); await button('New prompt'); await input('dialog input','UAT prompt'); await input('[aria-label="Prompt content"]','Hello {{name}}');
     assert.ok(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Copy rendered prompt').disabled"));
-    await js("document.querySelector('dialog input[type=checkbox]').click()"); await button('Save prompt'); await finish();
-    assert.ok((await mainText()).includes('UAT prompt ★')); await button('Edit / use'); await input('dialog .wb-field:last-of-type input','User');
+    await js("[...document.querySelectorAll('dialog .wb-check')].find(e=>e.textContent.trim()==='Favorite').querySelector('input').click()"); await button('Save prompt'); await finish();
+    assert.ok((await mainText()).includes('UAT prompt ★')); await button('Edit / use'); await js("[...document.querySelectorAll('dialog .wb-field')].find(e=>e.querySelector('span')?.textContent==='Variable: name').querySelector('input').setAttribute('data-uat-variable','name')"); await input('[data-uat-variable="name"]','User');
     assert.ok(!(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Copy rendered prompt').disabled"))); await close();
     await button('Delete prompt'); await idle(); assert.ok((await mainText()).includes('library is empty'));
   });
@@ -163,12 +163,12 @@ export async function runPackagedUat({ session, home, results, output }) {
     fs.renameSync(path,path+'.uat-away'); await sync(); await nav('History & recovery'); await inspectHistory();
     assert.ok(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Restore as a draft for review').disabled")); await close();
     fs.renameSync(path+'.uat-away',path); await sync(); await inspectHistory();
-    await button('Restore as a draft for review'); await button('Reveal content'); await content();
-    assert.ok((await js("document.querySelector('dialog textarea').value")).includes('uat-original'));
+    await button('Restore as a draft for review'); await button('Reveal content'); await wait("!!document.querySelector('dialog .wb-diff')");
+    assert.ok((await js("document.querySelector('dialog .wb-diff section:last-child pre').textContent")).includes('uat-original'));
     assert.equal(JSON.parse(fs.readFileSync(path)).model,'uat-edited'); await close();
   });
   await step('settings protect unsaved preferences and reject nonexistent scan roots', async () => {
-    await nav('Settings'); await input('.wb-form-grid select','light'); await js('window.confirm=()=>false;true');
+    await nav('Settings'); await input('[aria-label="Appearance"]','light'); await js('window.confirm=()=>false;true');
     await js("[...document.querySelectorAll('.wb-sidebar nav button')].find(e=>e.innerText.startsWith('Overview')).click()"); await pause();
     assert.equal(await js("document.querySelector('main h1').textContent"),'Settings');
     assert.ok(await js("[...document.querySelectorAll('.wb-topbar button')].find(b=>b.textContent==='Sync').disabled"));
@@ -206,7 +206,7 @@ export async function runPackagedUat({ session, home, results, output }) {
     assert.ok(!(await mainText()).includes('NOT_FILE'));
   });
   await step('context estimates and actual executable discovery render without errors', async () => {
-    await nav('Context estimates'); assert.ok((await mainText()).includes('estimated text tokens'));
+    await nav('Context explorer'); assert.ok((await mainText()).includes('estimated tokens'));
     await nav('External tools'); await wait("document.querySelector('main').innerText.includes('markitdown')");
     await nav('Overview'); await idle(); assert.equal(await js("!!document.querySelector('[data-aios-recovery]')"),false);
     assert.deepEqual(session.rendererErrors,[]);
@@ -221,7 +221,7 @@ export async function runPackagedUat({ session, home, results, output }) {
       await button('Review resource headers'); await wait("document.querySelector('main h1')?.textContent==='Overview'");
       assert.ok((await mainText()).includes('Older AIOS data available'));
       fs.writeFileSync(path, original); await sync();
-      assert.equal(await js("document.querySelectorAll('main [role=alert]').length"), 0); assert.ok((await mainText()).includes('0 reported source issues'));
+      assert.equal(await js("document.querySelectorAll('main [role=alert]').length"), 0); assert.ok(!(await mainText()).includes('Discovery issues')); assert.equal((await session.request('inventory')).issues.filter(i => i.code !== 'LEGACY_DATA').length, 0);
       await nav('MCP servers'); assert.equal(await js("[...document.querySelectorAll('main button')].find(b=>b.textContent==='Capture current configuration').disabled"), false);
     } finally { fs.writeFileSync(path, original); fs.rmSync(legacy, { force: true }); await sync(); }
     await nav('Overview'); assert.deepEqual(session.rendererErrors,[]);
@@ -233,7 +233,7 @@ export async function runPackagedUat({ session, home, results, output }) {
       fs.writeFileSync(path, original); await nav('Overview'); await sync();
       assert.ok((await mainText()).includes('Resource metadata needs review (1)'));
       assert.ok(!(await mainText()).includes('Scan stopped'));
-      await js("document.querySelector('main details').open=true"); await button('Review file'); await content();
+      await js("[...document.querySelectorAll('main button')].find(b=>b.textContent==='Review file').closest('details').querySelector('summary').click()"); await button('Review file'); await wait("!!document.querySelector('dialog .markdown-reader')"); await button('Edit source'); await content();
       await button('Preview header repair'); await wait("!!document.querySelector('dialog .wb-diff')");
       assert.equal(fs.readFileSync(path, 'utf8'), original);
       assert.equal(await js("[...document.querySelectorAll('dialog button')].find(b=>b.textContent==='Save changes').disabled"), true);

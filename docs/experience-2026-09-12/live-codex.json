@@ -1,0 +1,298 @@
+{
+  "provider": "codex",
+  "status": "completed",
+  "error": null,
+  "complete": true,
+  "score": 1,
+  "suite": [
+    {
+      "id": "typical_lowercase",
+      "prompt": "hello",
+      "expected_output": "",
+      "assertions": [
+        {
+          "type": "equals",
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "value": "HELLO",
+          "file": ""
+        }
+      ],
+      "holdout": false
+    },
+    {
+      "id": "typical_mixed_case",
+      "prompt": "CoDeX",
+      "expected_output": "",
+      "assertions": [
+        {
+          "type": "equals",
+          "text": "The response must normalize every letter to uppercase and add no other text.",
+          "value": "CODEX",
+          "file": ""
+        }
+      ],
+      "holdout": false
+    },
+    {
+      "id": "edge_single_letter",
+      "prompt": "z",
+      "expected_output": "",
+      "assertions": [
+        {
+          "type": "equals",
+          "text": "A single ASCII letter is a valid one-word input and must be uppercased without extra text.",
+          "value": "Z",
+          "file": ""
+        }
+      ],
+      "holdout": true
+    },
+    {
+      "id": "out_of_scope_multiple_words",
+      "prompt": "hello world",
+      "expected_output": "",
+      "assertions": [
+        {
+          "type": "equals",
+          "text": "Input containing more than one word must produce exactly the rejection token.",
+          "value": "INVALID",
+          "file": ""
+        }
+      ],
+      "holdout": true
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "completed": 4,
+      "errors": 0,
+      "pass_rate": {
+        "mean": 1,
+        "stddev": 0
+      },
+      "time_seconds": {
+        "mean": 49.04575,
+        "stddev": 1.0283677600936356
+      },
+      "tokens": {
+        "mean": 6908.25,
+        "stddev": 1.2583057392117916
+      }
+    },
+    "candidate": {
+      "completed": 4,
+      "errors": 0,
+      "pass_rate": {
+        "mean": 0,
+        "stddev": 0
+      },
+      "time_seconds": {
+        "mean": 48.06399999999999,
+        "stddev": 1.154958296505405
+      },
+      "tokens": {
+        "mean": 6875,
+        "stddev": 2.581988897471611
+      }
+    },
+    "delta": -1
+  },
+  "samples": [
+    {
+      "testId": "typical_lowercase",
+      "repeat": 0,
+      "variant": "candidate",
+      "holdout": false,
+      "status": "completed",
+      "artifacts": [],
+      "output": "Hello! How can I help?",
+      "expectations": [
+        {
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 46384,
+      "tokens": 6878,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "typical_lowercase",
+      "repeat": 0,
+      "variant": "baseline",
+      "holdout": false,
+      "status": "completed",
+      "artifacts": [],
+      "output": "HELLO",
+      "expectations": [
+        {
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "passed": true,
+          "evidence": "equals check passed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 1,
+      "durationMs": 49786,
+      "tokens": 6908,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "typical_mixed_case",
+      "repeat": 0,
+      "variant": "baseline",
+      "holdout": false,
+      "status": "completed",
+      "artifacts": [],
+      "output": "CODEX",
+      "expectations": [
+        {
+          "text": "The response must normalize every letter to uppercase and add no other text.",
+          "passed": true,
+          "evidence": "equals check passed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 1,
+      "durationMs": 50067,
+      "tokens": 6910,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "typical_mixed_case",
+      "repeat": 0,
+      "variant": "candidate",
+      "holdout": false,
+      "status": "completed",
+      "artifacts": [],
+      "output": "CoDeX",
+      "expectations": [
+        {
+          "text": "The response must normalize every letter to uppercase and add no other text.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 49020,
+      "tokens": 6876,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "edge_single_letter",
+      "repeat": 0,
+      "variant": "candidate",
+      "holdout": true,
+      "status": "completed",
+      "artifacts": [],
+      "output": "z",
+      "expectations": [
+        {
+          "text": "A single ASCII letter is a valid one-word input and must be uppercased without extra text.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 48385,
+      "tokens": 6872,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "edge_single_letter",
+      "repeat": 0,
+      "variant": "baseline",
+      "holdout": true,
+      "status": "completed",
+      "artifacts": [],
+      "output": "Z",
+      "expectations": [
+        {
+          "text": "A single ASCII letter is a valid one-word input and must be uppercased without extra text.",
+          "passed": true,
+          "evidence": "equals check passed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 1,
+      "durationMs": 48042,
+      "tokens": 6907,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "out_of_scope_multiple_words",
+      "repeat": 0,
+      "variant": "candidate",
+      "holdout": true,
+      "status": "completed",
+      "artifacts": [],
+      "output": "hello world",
+      "expectations": [
+        {
+          "text": "Input containing more than one word must produce exactly the rejection token.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 48467,
+      "tokens": 6874,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "out_of_scope_multiple_words",
+      "repeat": 0,
+      "variant": "baseline",
+      "holdout": true,
+      "status": "completed",
+      "artifacts": [],
+      "output": "INVALID",
+      "expectations": [
+        {
+          "text": "Input containing more than one word must produce exactly the rejection token.",
+          "passed": true,
+          "evidence": "equals check passed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 1,
+      "durationMs": 48288,
+      "tokens": 6908,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    }
+  ],
+  "rationale": "Covers two typical valid inputs (lowercase and mixed case), the edge case of a one-letter word, and an out-of-scope multiword input. All checks are deterministic exact matches because the supplied instructions specify exact outputs. The suite does not explore every invalid-input category, such as punctuation, Unicode, or empty input.",
+  "cost": null,
+  "originalUnchanged": true,
+  "testedAt": "2026-09-12T08:30:11.899Z"
+}

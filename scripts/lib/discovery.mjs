@@ -77,7 +77,7 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
       }
       const file = readFile(real);
       const item = { ...base, revision: file.revision, bytes: Buffer.byteLength(file.content), mode: file.mode,
-        estimatedTokens: Math.ceil(file.content.length / 4), modifiedAt: stat(real).mtime.toISOString() };
+        estimatedTokens: Math.ceil(file.content.length / 4), lines: file.content.split(/\r?\n/).length - (file.content.endsWith('\n') ? 1 : 0), modifiedAt: stat(real).mtime.toISOString() };
       // Deduplicate aliases of the same native source, while retaining provider identity.
       const dedupe = `${provider}:${kind}:${real}`;
       if (known.has(dedupe)) return;
@@ -258,5 +258,5 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
   progress({ entries, complete: true });
   return { resources, issues, projects: [...projects].sort(), roots, providerPaths: dirs, providers: PROVIDERS, syncedAt: new Date().toISOString(), incomplete, entries,
     supportNotes: ['Inventory reports configured sources. Provider trust, precedence, runtime connections and remotely managed policies must be checked in the provider.',
-      'Plugin caches, cloud settings, credentials and provider session history are not scanned.'] };
+      'Plugin caches, cloud settings, credentials and provider session history are not part of configuration discovery. Session insights reads bounded metadata separately.'] };
 }

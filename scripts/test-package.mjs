@@ -6,6 +6,8 @@ import { inspectApplication, inspectDmg, verifyInstallerMetadata, digest as hash
 import { packagedSession } from './packaged-session.mjs';
 import { seedUat, runPackagedUat } from '../tests/packaged-uat.mjs';
 import { seedLabUat, runLabUat } from '../tests/lab-uat.mjs';
+import { runAIUat } from '../tests/ai-uat.mjs';
+import { seedExperienceUat, runExperienceUat } from '../tests/experience-uat.mjs';
 import { createConverter } from './lib/converter.mjs';
 
 const directory = resolve(process.argv[2] || 'release-local'), pkg = JSON.parse(fs.readFileSync('package.json'));
@@ -36,11 +38,20 @@ const applications = join(base, 'Applications'), installed = join(applications, 
 const exe = join(installed, 'Contents/MacOS', pkg.build.productName);
 const install = () => run('/usr/bin/ditto', ['-x', '-k', join(directory, `AI-Tools-OS-${pkg.version}-${testArch}.zip`), applications]);
 let session;
-const call = async (operation, args = {}) => { const result = await session.request(operation, args); assert.equal(result.ok, true, JSON.stringify(result)); return result; };
+const call = async (operation, args = {}) => {
+  // A just-mounted UI may be reading preferences. BUSY means the main process
+  // rejected this request before dispatch; wait before retrying the test action.
+  for (let i = 0; i < 100; i++) {
+    const result = await session.request(operation, args);
+    if (result.code === 'BUSY') { await new Promise(r => setTimeout(r, 40)); continue; }
+    assert.equal(result.ok, true, JSON.stringify(result)); return result;
+  }
+  throw Error('Packaged backend did not become idle');
+};
 try {
   install(); session = await packagedSession({ exe, home, userData, cwd: base });
   await runPackagedUat({ session, home, results: results.uat, output: resolve('test-results', `packaged-uat-${testArch}.png`) });
-  seedLabUat(home, process.execPath);
+  seedLabUat(home, process.execPath); seedExperienceUat(home);
   await runLabUat({ evaluate: session.evaluate, home, output: resolve('test-results'), probe: async (name, fn) => {
     try { await fn(); results.uat.push({ name, passed: true }); console.log('PASS', name); }
     catch (error) { results.uat.push({ name, passed: false, error: error.stack }); throw error; }
@@ -59,6 +70,14 @@ try {
   if (!converted) console.error('Conversion diagnostics:', await session.evaluate("window.aios.lab('list').then(jobs=>({ui:document.querySelector('main')?.innerText,jobs}))"));
   assert.ok(converted, 'Packaged converter did not produce Markdown from the selected native File');
   results.uat.push({ name: 'Packaged preload accepts file drop and real MarkItDown extracts document bytes', passed: true });
+  await runAIUat({ evaluate: session.evaluate, home, output: resolve('test-results'), probe: async (name, fn) => {
+    try { await fn(); results.uat.push({ name, passed: true }); console.log('PASS', name); }
+    catch (error) { results.uat.push({ name, passed: false, error: error.stack }); throw error; }
+  } });
+  await runExperienceUat({ evaluate: session.evaluate, home, output: resolve('test-results'), probe: async (name, fn) => {
+    try { await fn(); results.uat.push({ name, passed: true }); console.log('PASS', name); }
+    catch (error) { results.uat.push({ name, passed: false, error: error.stack }); throw error; }
+  } });
   assert.deepEqual(session.rendererErrors, [], 'Packaged feature workflows caused renderer errors');
   const resource = session.inventory.resources.find(r => r.path === path); assert.ok(resource, 'Fixture source missing');
   await call('resource.write', { id: resource.id, revision: resource.revision, content: 'saved from packaged app' });

@@ -1,0 +1,132 @@
+{
+  "provider": "codex",
+  "requestedModel": "provider default",
+  "at": "2026-09-12T05:51:45.951Z",
+  "fixtureIsolated": true,
+  "results": [
+    {
+      "operation": "ai.draft",
+      "status": "completed",
+      "provider": "codex",
+      "model": "provider default",
+      "cost": null
+    },
+    {
+      "operation": "improve",
+      "status": "completed",
+      "provider": "codex",
+      "model": "provider default",
+      "cost": null,
+      "summary": {
+        "baseline": {
+          "completed": 2,
+          "errors": 0,
+          "pass_rate": {
+            "mean": 0,
+            "stddev": 0
+          },
+          "time_seconds": {
+            "mean": 50.066,
+            "stddev": 3.8183766184073553
+          },
+          "tokens": {
+            "mean": 6915,
+            "stddev": 0
+          }
+        },
+        "candidate": {
+          "completed": 2,
+          "errors": 0,
+          "pass_rate": {
+            "mean": 1,
+            "stddev": 0
+          },
+          "time_seconds": {
+            "mean": 50.231,
+            "stddev": 3.548261827994096
+          },
+          "tokens": {
+            "mean": 6948.5,
+            "stddev": 0.7071067811865476
+          }
+        },
+        "delta": 1
+      },
+      "holdout": {
+        "baseline": {
+          "completed": 1,
+          "errors": 0,
+          "pass_rate": {
+            "mean": 0,
+            "stddev": null
+          },
+          "time_seconds": {
+            "mean": 52.766,
+            "stddev": null
+          },
+          "tokens": {
+            "mean": 6915,
+            "stddev": null
+          }
+        },
+        "candidate": {
+          "completed": 1,
+          "errors": 0,
+          "pass_rate": {
+            "mean": 1,
+            "stddev": null
+          },
+          "time_seconds": {
+            "mean": 52.74,
+            "stddev": null
+          },
+          "tokens": {
+            "mean": 6949,
+            "stddev": null
+          }
+        },
+        "delta": 1
+      },
+      "complete": true,
+      "samples": [
+        {
+          "variant": "candidate",
+          "testId": "training",
+          "status": "completed",
+          "pass_rate": 1,
+          "output": "APPLE"
+        },
+        {
+          "variant": "baseline",
+          "testId": "training",
+          "status": "completed",
+          "pass_rate": 0,
+          "output": "UNKNOWN"
+        },
+        {
+          "variant": "candidate",
+          "testId": "heldout",
+          "status": "completed",
+          "pass_rate": 1,
+          "output": "PEAR"
+        },
+        {
+          "variant": "baseline",
+          "testId": "heldout",
+          "status": "completed",
+          "pass_rate": 0,
+          "output": "UNKNOWN"
+        }
+      ]
+    },
+    {
+      "operation": "ai.review",
+      "status": "completed",
+      "provider": "codex",
+      "model": "provider default",
+      "cost": null,
+      "summary": "The skill cannot fulfill its declared purpose because its operative instruction contradicts the stated uppercase behavior."
+    }
+  ],
+  "passed": true
+}

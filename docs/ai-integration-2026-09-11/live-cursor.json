@@ -1,0 +1,16 @@
+{
+  "provider": "cursor",
+  "requestedModel": "provider default",
+  "at": "2026-09-12T05:57:32.118Z",
+  "fixtureIsolated": true,
+  "results": [
+    {
+      "operation": "ai.draft",
+      "status": "failed",
+      "error": "Cursor Agent needs authentication. Sign in with its native CLI, then start a new run.",
+      "code": "AUTH_REQUIRED"
+    }
+  ],
+  "passed": false,
+  "failure": "Cursor Agent needs authentication. Sign in with its native CLI, then start a new run.\n+ actual - expected\n\n+ 'failed'\n- 'completed'\n"
+}

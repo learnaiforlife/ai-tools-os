@@ -1,7 +1,11 @@
+import { executable } from './processes.mjs';
+import { aiPreferences } from './ai/settings.mjs';
+import { experiencePreferences } from './insights/preferences.mjs';
 import * as fs from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { Storage, exists, canonical, inside, readText, fail, hash, MAX_BYTES, atomicWrite } from './storage.mjs';
 import { discover, DEFAULT_PREFS, providerPaths, resourceId } from './discovery.mjs';
 import { validate, parseConfig, jsonText, validateMcp, mcpEnabledToml, appendMcpToml, editJson, jsonValueText, editTomlValue, suggestFrontmatterRepair } from './formats.mjs';
@@ -29,6 +33,7 @@ export function createService(options = {}) {
       if (!Array.isArray(legacy.roots)) fail('STATE_CORRUPT', 'Saved scan roots are invalid.');
       state.roots = [...new Set([join(home, 'Documents'), ...legacy.roots])].filter(p => typeof p === 'string' && isAbsolute(p) && exists(p));
     }
+    state.prompts = state.prompts.map(p => ({ ...p, revision: hash(JSON.stringify([p.name, p.content, !!p.favorite])) }));
     return state;
   };
   const scan = state => {
@@ -166,6 +171,22 @@ export function createService(options = {}) {
     return { sources, plans, previewRevision: hash(JSON.stringify({ sources, plans: [...plans.values()], parked: state.parked })) };
   }
 
+  function cleanupPlan(args, state) {
+    if (!Array.isArray(args.sources) || !args.sources.length || args.sources.length > 100) fail('INVALID', 'Select 1–100 resources to clean up.');
+    const plans = new Map(), moves = [], seen = new Set(), parkedBefore = hash(JSON.stringify(state.parked));
+    const sources = args.sources.map(source => {
+      const r = find(source.id, false); revision(r, source.revision);
+      if (!r.enabled || r.readonly || r.error || r.overrideOnly || !['mcp', 'skills', 'memory', 'commands', 'agents'].includes(r.kind)) fail('UNSUPPORTED', 'Select enabled, writable MCPs or instruction resources.');
+      writable(r, state);
+      const key = r.kind === 'mcp' ? r.id : r.canonicalPath;
+      if (seen.has(key)) fail('CONFLICT', 'Two selections refer to the same native source. Select one copy.'); seen.add(key);
+      if (r.kind === 'mcp') mcpPlan(r, false, state, plans);
+      else moves.push(fileToggle(r, false, state, true));
+      return { id: r.id, name: r.name, kind: r.kind, provider: r.provider, scope: r.scope, path: r.path, revision: r.revision, bundleDigest: r.kind === 'skills' ? bundleInventory(dirname(r.path)).digest : null, action: r.kind === 'mcp' ? 'Disable native definition' : 'Archive complete resource' };
+    });
+    return { sources, plans, moves, previewRevision: hash(JSON.stringify({ sources, plans: [...plans.values()], parkedBefore })) };
+  }
+
   function projectMcpPlan(args, state) {
     const resource = find(args.id, args.parked);
     if (resource.kind !== 'mcp' || resource.parked || resource.readonly || resource.error) fail('UNSUPPORTED', 'Select a readable, live MCP definition.');
@@ -234,12 +255,51 @@ export function createService(options = {}) {
     }
     const state = load();
     if (operation === 'tools.detect') {
-      const paths = [...new Set([...(env.PATH || '').split(':').filter(isAbsolute), join(home, '.local/bin'), join(home, '.cargo/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin'])];
-      const tools = ['claude', 'codex', 'cursor', 'node', 'python3', 'uv', 'markitdown', 'git'].map(name => {
-        const path = paths.map(root => join(root, name)).find(p => { try { return fs.statSync(p).isFile() && !!(fs.statSync(p).mode & 0o111); } catch { return false; } });
-        return { name, path: path || null, version: null };
-      });
+      const tools = ['claude', 'codex', 'agent', 'cursor-agent', 'cursor', 'node', 'python3', 'uv', 'markitdown', 'git'].map(name => ({ name, path: executable(name, home, env), version: null }));
       return { tools };
+    }
+    if (operation === 'preferences.ai.get') return { preferences: aiPreferences(state.preferences.ai) };
+    if (operation === 'preferences.experience.get') return { preferences: experiencePreferences(state.preferences.experience), providerPreferences: { providerPaths: state.preferences.providerPaths }, ai: aiPreferences(state.preferences.ai) };
+    if (operation === 'preferences.experience.save') {
+      state.preferences.experience = experiencePreferences({ ...experiencePreferences(state.preferences.experience), ...args.preferences });
+      saveState('Update workspace experience', state); return { preferences: state.preferences.experience };
+    }
+    if (operation === 'observer.preview' || operation === 'observer.apply') {
+      if (!['Claude Code', 'Cursor'].includes(args.provider) || !['install', 'remove'].includes(args.action)) fail('INVALID', 'Choose a supported local observer and action.');
+      const dirs = providerPaths(home, env, state.preferences), path = args.provider === 'Cursor' ? join(dirs.cursor, 'hooks.json') : join(dirs.claude, 'settings.json');
+      checkedPath(path, state);
+      const current = exists(path) ? readText(path) : { content: '{}\n', revision: null };
+      const object = parseConfig(current.content, path), hooks = object.hooks || {};
+      if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) fail('INVALID', 'Repair the native hooks configuration before installing an observer.');
+      const scriptPath = store.privatePath('session-observer.mjs'), script = fs.readFileSync(fileURLToPath(new URL('./insights/observer.mjs', import.meta.url)), 'utf8');
+      const executablePath = process.execPath;
+      const command = `ELECTRON_RUN_AS_NODE=1 ${shellQuote(executablePath)} ${shellQuote(scriptPath)} --capture ${shellQuote(args.provider)}`;
+      const previous = state.observers?.[args.provider]?.command;
+      const events = args.provider === 'Cursor' ? ['sessionStart', 'sessionEnd', 'beforeSubmitPrompt', 'postToolUse', 'afterMCPExecution', 'preCompact', 'stop'] : ['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PostToolUse', 'InstructionsLoaded', 'Stop'];
+      for (const event of events) {
+        if (hooks[event] !== undefined && !Array.isArray(hooks[event])) fail('INVALID', 'Native hook entries must be arrays.');
+        const retained = (hooks[event] || []).flatMap(entry => {
+          if (args.provider === 'Cursor') return previous && entry.command === previous || entry.command === command ? [] : [entry];
+          if (!Array.isArray(entry.hooks)) fail('INVALID', 'Native Claude hook entries must contain a hooks array.');
+          const keep = entry.hooks.filter(h => (!previous || h.command !== previous) && h.command !== command);
+          return keep.length ? [{ ...entry, hooks: keep }] : [];
+        });
+        if (args.action === 'install') retained.push(args.provider === 'Cursor' ? { command, timeout: 3, failClosed: false } : { matcher: '', hooks: [{ type: 'command', command, timeout: 3 }] });
+        if (retained.length) hooks[event] = retained; else delete hooks[event];
+      }
+      let content = editJson(current.content, ['hooks'], hooks);
+      if (args.provider === 'Cursor' && object.version === undefined) content = editJson(content, ['version'], 1);
+      const existingScript = exists(scriptPath) ? readText(scriptPath) : { revision: null };
+      const previewRevision = hash(JSON.stringify([current.revision, existingScript.revision, content, script, command, args.action]));
+      if (operation === 'observer.preview') return { provider: args.provider, action: args.action, path, scriptPath, before: current.content, after: content, previewRevision, events };
+      if (previewRevision !== args.previewRevision) fail('CONFLICT', 'Observer configuration changed. Review a fresh preview.');
+      state.observers ||= {};
+      if (args.action === 'install') state.observers[args.provider] = { command, installedAt: new Date().toISOString() }; else delete state.observers[args.provider];
+      saveState(`${args.action === 'install' ? 'Install' : 'Remove'} ${args.provider} activity observer`, state, [{ path, content, revision: current.revision }, ...(args.action === 'install' ? [{ path: scriptPath, content: script, revision: existingScript.revision }] : [])]);
+      return { installed: args.action === 'install', provider: args.provider };
+    }
+    if (operation === 'preferences.ai.save') {
+      state.preferences.ai = aiPreferences(args.preferences); saveState('Update AI preferences', state); return { preferences: state.preferences.ai };
     }
     if (operation === 'roots.set') {
       if (!Array.isArray(args.roots) || args.roots.length > 30 || args.roots.some(r => typeof r !== 'string' || !isAbsolute(r))) fail('INVALID', 'Provide up to 30 absolute scan folders.');
@@ -252,16 +312,22 @@ export function createService(options = {}) {
       if (!object(prefs) || !['dark', 'light', 'system'].includes(prefs.theme) || ![0, 30, 60, 300].includes(prefs.syncInterval) || !Array.isArray(prefs.exclusions)
         || prefs.exclusions.length > 100 || prefs.exclusions.some(s => typeof s !== 'string' || !s || /[/\\]/.test(s)) || !object(prefs.providerPaths)) fail('INVALID', 'Invalid preferences.');
       providerPaths(home, env, prefs); // validate before persisting
-      state.preferences = { theme: prefs.theme, syncInterval: prefs.syncInterval, exclusions: prefs.exclusions, providerPaths: prefs.providerPaths };
+      state.preferences = { ...(state.preferences.experience ? { experience: experiencePreferences(state.preferences.experience) } : {}), ...(state.preferences.ai ? { ai: aiPreferences(state.preferences.ai) } : {}), theme: prefs.theme, syncInterval: prefs.syncInterval, exclusions: prefs.exclusions, providerPaths: prefs.providerPaths };
       saveState('Update preferences', state); return scan(state);
+    }
+    if (operation === 'prompts.read') {
+      const p = state.prompts.find(p => p.id === args.id); if (!p) fail('NOT_FOUND', 'Prompt no longer exists.');
+      return { ...p, id: `prompt:${p.id}`, promptId: p.id, kind: 'prompts', provider: 'Local library', scope: 'user', path: `Prompt library/${p.name}`, readonly: false };
     }
     if (operation === 'prompts.save') {
       const p = args.prompt;
       if (!object(p) || typeof p.content !== 'string' || Buffer.byteLength(p.content) > 100000) fail('INVALID', 'Prompt text is missing or too large.');
       nameSafe(p.name);
       const old = state.prompts.find(x => x.id === p.id);
+      if (old && old.revision !== p.revision) fail('CONFLICT', 'This prompt changed while you were editing. Reload it before saving.');
       if (p.id && !old) fail('NOT_FOUND', 'Prompt no longer exists.');
       const record = { id: p.id || randomUUID(), name: p.name, content: p.content, favorite: !!p.favorite, updatedAt: new Date().toISOString() };
+      record.revision = hash(JSON.stringify([record.name, record.content, record.favorite]));
       state.prompts = [...state.prompts.filter(x => x.id !== record.id), record];
       if (state.prompts.length > 200) fail('LIMIT', 'The local library supports up to 200 prompts.');
       saveState('Save prompt', state); return scan(state);
@@ -272,12 +338,22 @@ export function createService(options = {}) {
     }
     scan(state);
     if (operation === 'inventory') return { ...snapshot, preferences: state.preferences, profiles: state.profiles, activeProfile: state.activeProfile, prompts: state.prompts };
+    if (operation === 'ai.context' || operation === 'ai.context.batch') {
+      const batch = operation === 'ai.context.batch';
+      if (!Array.isArray(args.ids) || args.ids.length > (batch ? 1000 : 30) || new Set(args.ids).size !== args.ids.length) fail('INVALID', `Select up to ${batch ? 1000 : 30} distinct resources.`);
+      let size = 0;
+      const files = args.ids.map(id => {
+        const r = find(id, false), file = contentFor(r, state);
+        size += Buffer.byteLength(file.content); if (size > (batch ? 8 * 1024 * 1024 : 150000)) fail('LIMIT', 'Selected context is too large. Review fewer files together.');
+        return { id, kind: r.kind, name: r.name, path: r.path, provider: r.provider, scope: r.scope, mode: r.mode, content: file.content, revision: file.revision };
+      }); return { files };
+    }
     if (operation === 'resources.read') {
       if (!Array.isArray(args.ids) || !args.ids.length || args.ids.length > 30 || new Set(args.ids).size !== args.ids.length) fail('INVALID', 'Select 1–30 distinct instruction files.');
       let bytes = 0;
       const files = args.ids.map(id => {
         const r = find(id, false);
-        if (!['skills', 'memory'].includes(r.kind) || r.error) fail('INVALID', 'Select readable skills or memory files.');
+        if (!['skills', 'memory', 'agents', 'commands'].includes(r.kind) || r.error) fail('INVALID', 'Select readable skills or memory files.');
         const file = contentFor(r, state); bytes += Buffer.byteLength(file.content);
         if (bytes > 2 * 1024 * 1024) fail('LIMIT', 'Selected instruction text exceeds 2 MiB. Review fewer files together.');
         return { id, kind: r.kind, name: r.name, path: file.path, canonicalPath: r.canonicalPath, provider: r.provider, project: r.project, scope: r.scope, readonly: r.readonly, content: file.content, revision: file.revision };
@@ -285,6 +361,12 @@ export function createService(options = {}) {
       return { files };
     }
     if (operation === 'resource.read') return contentFor(find(args.id, args.parked), state);
+    if (operation === 'cleanup.preview' || operation === 'cleanup.apply') {
+      const plan = cleanupPlan(args, state);
+      if (operation === 'cleanup.preview') return { sources: plan.sources, previewRevision: plan.previewRevision };
+      if (args.previewRevision !== plan.previewRevision) fail('CONFLICT', 'Cleanup sources changed. Refresh the preview before applying.');
+      saveState('Clean up selected resources', state, [...plan.plans.values()], plan.moves); return scan(state);
+    }
     if (operation === 'transfer.preview' || operation === 'transfer.apply') {
       const context = transferContext(state, snapshot), plan = transferPlan(args, context);
       if (operation === 'transfer.preview') return plan.preview;
@@ -455,7 +537,7 @@ export function createService(options = {}) {
     request(operation, args = {}) {
       try {
         if (typeof operation !== 'string' || !object(args) || Buffer.byteLength(JSON.stringify(args)) > MAX_BYTES + 65536) fail('INVALID', 'Invalid or oversized request.');
-        const result = ['history', 'history.read'].includes(operation) ? handle(operation, args) : store.locked(() => handle(operation, args));
+        const result = ['history', 'history.read', 'preferences.experience.get', 'preferences.ai.get', 'tools.detect'].includes(operation) ? handle(operation, args) : store.locked(() => handle(operation, args));
         return { ok: true, ...result };
       } catch (error) { return { ok: false, code: error.code || 'IO_ERROR', error: error.code === 'EACCES' ? 'Permission denied. Check macOS folder access and file permissions.' : error.message }; }
     },

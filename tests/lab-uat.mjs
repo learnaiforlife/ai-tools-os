@@ -16,8 +16,11 @@ if(prompt.includes('UAT_CANCEL')){setTimeout(()=>{},300000)}else{
 let result='ORIGINAL',structured;
 if(system.includes('Say CANDIDATE'))result='CANDIDATE';
 if(args.includes('--json-schema')){const schema=JSON.parse(args[args.indexOf('--json-schema')+1]);let data;try{data=JSON.parse(prompt)}catch{}
-if(schema.properties.findings)structured={summary:'Review complete with a concrete finding.',findings:[{path:data[0].path,line:1,message:'A project command may be in user instructions.',suggestion:'Review the destination project.'}]};
-else if(schema.properties.content)structured={content:(data.source||data.candidate||data.original).replace('ORIGINAL','CANDIDATE'),rationale:'The candidate addresses the requested behavior.'};
+if(schema.properties.body)structured={description:'Use for the UAT creation goal.',body:'# Generated instructions\\nAI_DRAFT_UAT: Complete the supplied goal, validate the output, and report assumptions.',rationale:'Generated from the stated goal.'};
+else if(schema.properties.suite)structured={suite:JSON.stringify({evals:(system.includes('exactly four')?[1,2,3,4]:[1,2]).map(n=>({id:n===2?'heldout':'case-'+n,prompt:'Return ORIGINAL for case '+n,holdout:n===2,assertions:[{type:'contains',value:'ORIGINAL',text:'Meets requirement'}]}))}),rationale:'Review training and held-out coverage before running.'};
+else if(schema.properties.findings && data.files)structured={summary:'Resource review completed.',findings:[{fileId:data.files[0].fileId,line:1,evidence:data.files[0].content.split('\\n')[0],message:'Review the instruction boundary.',suggestion:'State the intended scope.',severity:'warning'}]};
+else if(schema.properties.findings)structured={summary:'Review complete with a concrete finding.',findings:[{path:data[0].path,line:1,message:'A project command may be in user instructions.',suggestion:'Review the destination project.'}]};
+else if(schema.properties.content)structured={content:(data.source?.content||data.source||data.candidate||data.original).replace('ORIGINAL','CANDIDATE'),rationale:'The candidate addresses the requested behavior.'};
 else if(schema.properties.expectations)structured={expectations:data.assertions.map(a=>({text:typeof a==='string'?a:a.text,passed:data.output.includes('CANDIDATE'),evidence:'Observed the requested answer.'}))};
 else structured={winner:data.output_A.includes('CANDIDATE')?'A':'B',reasoning:'This answer meets the requested criterion.'};}
 const response={type:'result',subtype:'success',is_error:false,result,total_cost_usd:0.001,usage:{input_tokens:12,output_tokens:3},structured_output:structured};
@@ -48,8 +51,8 @@ export async function runLabUat({ evaluate: js, home, screenshot, output, probe 
     assert.equal(await js("document.querySelector('main').innerText.includes('Local review results')"), false, 'Applying a review must invalidate the previous source offsets and findings');
   });
   await probe('Memory Review moves one section with a two-file comparison', async () => {
-    await button('Run local checks'); await wait("!!document.querySelector('.lab-workspace details pre')");
-    await js("[...document.querySelectorAll('.lab-workspace details')].find(d=>d.querySelector('pre'))?.setAttribute('open','')");
+    await button('Run local checks'); await wait("!!document.querySelector('.lab-workspace details .markdown-reader')");
+    await js("[...document.querySelectorAll('.lab-workspace details')].find(d=>d.querySelector('.markdown-reader'))?.setAttribute('open','')");
     await js("[...document.querySelectorAll('.lab-workspace .wb-row')].find(r=>r.textContent.startsWith('Build'))?.querySelector('button').click()"); await wait("!!document.querySelector('[aria-label=\"Memory destination\"]')");
     await value('[aria-label="Memory destination"]', join(home, 'Documents/Lab project')); await button('Preview section move'); await wait("document.querySelectorAll('dialog .wb-diff').length===2");
     await js("document.querySelector('dialog .wb-check input').click()"); await button('Apply section move'); await wait("!document.querySelector('dialog')");
@@ -60,7 +63,7 @@ export async function runLabUat({ evaluate: js, home, screenshot, output, probe 
     assert.ok((await js("document.querySelector('.lab-result').innerText")).includes('Review complete with a concrete finding.'));
   });
   await probe('Skill Lab runs A/B assertions and exposes measured before/after results', async () => {
-    await nav('Skill Lab'); await wait("!!document.querySelector('[aria-label=\"Evaluation resource\"]')");
+    await nav('Skill Lab'); await button('Advanced'); await wait("!!document.querySelector('[aria-label=\"Evaluation resource\"]')");
     const id = await js("[...document.querySelector('[aria-label=\"Evaluation resource\"]').options].find(o=>o.textContent.startsWith('Lab UAT skill')).value");
     await value('[aria-label="Evaluation resource"]', id); await wait("!!document.querySelector('[aria-label=\"Candidate instructions\"]')");
     const original = fs.readFileSync(join(home, '.claude/skills/lab/SKILL.md'), 'utf8'); await value('[aria-label="Candidate instructions"]', original.replace('ORIGINAL', 'CANDIDATE'));
@@ -76,7 +79,7 @@ export async function runLabUat({ evaluate: js, home, screenshot, output, probe 
   });
   await probe('Evaluation cancellation works while other pages remain responsive', async () => {
     await value('[aria-label="Test suite"]', JSON.stringify({ evals: [{ id: 1, prompt: 'UAT_CANCEL', assertions: [{ type: 'contains', value: 'done', text: 'Done' }] }] }));
-    await button('Run comparison'); await wait("document.querySelector('.lab-result > p strong')?.textContent==='running'"); await nav('Overview'); assert.ok(await js("!!document.querySelector('.wb-metrics')")); await nav('Skill Lab');
+    await button('Run comparison'); await wait("document.querySelector('.lab-result > p strong')?.textContent==='running'"); await nav('Overview'); assert.ok(await js("!!document.querySelector('.overview-pulse')")); await nav('Skill Lab');
     const active = await js("window.aios.lab('list').then(r=>r.jobs.find(j=>j.status==='running').id)");
     await js(`window.aios.lab('cancel',{id:${JSON.stringify(active)}})`); await wait(`window.aios.lab('get',{id:${JSON.stringify(active)}}).then(r=>r.job.status==='canceled')`);
   });

@@ -1,0 +1,310 @@
+{
+  "provider": "codex",
+  "status": "completed",
+  "error": null,
+  "complete": true,
+  "score": 0.25,
+  "suite": [
+    {
+      "id": "uppercase_typical_lowercase",
+      "prompt": "Apply the supplied uppercase instruction to this input: {{input}}",
+      "variables": {
+        "input": "hello"
+      },
+      "expected_output": "",
+      "assertions": [
+        {
+          "type": "equals",
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "value": "HELLO",
+          "file": ""
+        }
+      ],
+      "holdout": false
+    },
+    {
+      "id": "uppercase_typical_mixed_case",
+      "prompt": "Apply the supplied uppercase instruction to this input: {{input}}",
+      "variables": {
+        "input": "CoDeX"
+      },
+      "expected_output": "",
+      "assertions": [
+        {
+          "type": "equals",
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "value": "CODEX",
+          "file": ""
+        }
+      ],
+      "holdout": false
+    },
+    {
+      "id": "uppercase_edge_single_letter",
+      "prompt": "Apply the supplied uppercase instruction to this input: {{input}}",
+      "variables": {
+        "input": "q"
+      },
+      "expected_output": "",
+      "assertions": [
+        {
+          "type": "equals",
+          "text": "A single ASCII letter is a valid word and must be returned uppercase with no other text.",
+          "value": "Q",
+          "file": ""
+        }
+      ],
+      "holdout": true
+    },
+    {
+      "id": "uppercase_out_of_scope_multiple_words",
+      "prompt": "Apply the supplied uppercase instruction to this input: {{input}}",
+      "variables": {
+        "input": "hello world"
+      },
+      "expected_output": "",
+      "assertions": [
+        {
+          "type": "equals",
+          "text": "Input containing more than one word must produce exactly INVALID.",
+          "value": "INVALID",
+          "file": ""
+        }
+      ],
+      "holdout": true
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "completed": 4,
+      "errors": 0,
+      "pass_rate": {
+        "mean": 0.25,
+        "stddev": 0.5
+      },
+      "time_seconds": {
+        "mean": 46.34,
+        "stddev": 0.7833411347129258
+      },
+      "tokens": {
+        "mean": 6935,
+        "stddev": 11.343133018115703
+      }
+    },
+    "candidate": {
+      "completed": 4,
+      "errors": 0,
+      "pass_rate": {
+        "mean": 0,
+        "stddev": 0
+      },
+      "time_seconds": {
+        "mean": 47.05975,
+        "stddev": 0.5333187758429923
+      },
+      "tokens": {
+        "mean": 6906.5,
+        "stddev": 24.839484696748443
+      }
+    },
+    "delta": -0.25
+  },
+  "samples": [
+    {
+      "testId": "uppercase_typical_lowercase",
+      "repeat": 0,
+      "variant": "baseline",
+      "holdout": false,
+      "status": "completed",
+      "artifacts": [],
+      "output": "INVALID",
+      "expectations": [
+        {
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 45399,
+      "tokens": 6918,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "uppercase_typical_lowercase",
+      "repeat": 0,
+      "variant": "candidate",
+      "holdout": false,
+      "status": "completed",
+      "artifacts": [],
+      "output": "{{INPUT}}",
+      "expectations": [
+        {
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 47218,
+      "tokens": 6927,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "uppercase_typical_mixed_case",
+      "repeat": 0,
+      "variant": "candidate",
+      "holdout": false,
+      "status": "completed",
+      "artifacts": [],
+      "output": "{{INPUT}}",
+      "expectations": [
+        {
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 46281,
+      "tokens": 6885,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "uppercase_typical_mixed_case",
+      "repeat": 0,
+      "variant": "baseline",
+      "holdout": false,
+      "status": "completed",
+      "artifacts": [],
+      "output": "INVALID",
+      "expectations": [
+        {
+          "text": "The response must contain only the uppercase form of the supplied ASCII word.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 46048,
+      "tokens": 6941,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "uppercase_edge_single_letter",
+      "repeat": 0,
+      "variant": "candidate",
+      "holdout": true,
+      "status": "completed",
+      "artifacts": [],
+      "output": "{{INPUT}}",
+      "expectations": [
+        {
+          "text": "A single ASCII letter is a valid word and must be returned uppercase with no other text.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 47491,
+      "tokens": 6929,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "uppercase_edge_single_letter",
+      "repeat": 0,
+      "variant": "baseline",
+      "holdout": true,
+      "status": "completed",
+      "artifacts": [],
+      "output": "INVALID",
+      "expectations": [
+        {
+          "text": "A single ASCII letter is a valid word and must be returned uppercase with no other text.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 46722,
+      "tokens": 6941,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "uppercase_out_of_scope_multiple_words",
+      "repeat": 0,
+      "variant": "baseline",
+      "holdout": true,
+      "status": "completed",
+      "artifacts": [],
+      "output": "INVALID",
+      "expectations": [
+        {
+          "text": "Input containing more than one word must produce exactly INVALID.",
+          "passed": true,
+          "evidence": "equals check passed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 1,
+      "durationMs": 47191,
+      "tokens": 6940,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    },
+    {
+      "testId": "uppercase_out_of_scope_multiple_words",
+      "repeat": 0,
+      "variant": "candidate",
+      "holdout": true,
+      "status": "completed",
+      "artifacts": [],
+      "output": "{{INPUT}}",
+      "expectations": [
+        {
+          "text": "Input containing more than one word must produce exactly INVALID.",
+          "passed": false,
+          "evidence": "equals check failed.",
+          "method": "deterministic"
+        }
+      ],
+      "pass_rate": 0,
+      "durationMs": 47249,
+      "tokens": 6885,
+      "cost": null,
+      "provider": "codex",
+      "model": "provider default",
+      "resolvedModel": null
+    }
+  ],
+  "rationale": "Covers two typical valid words with different casing, the edge case of a one-letter word, and an out-of-scope multiword input. Exact equality checks enforce both transformation and the no-extra-text rule. The suite assumes \u201cASCII word\u201d means a nonempty sequence of ASCII letters; the source does not define behavior for digits, punctuation, or surrounding whitespace, so those ambiguous cases are omitted.",
+  "cost": null,
+  "originalUnchanged": true,
+  "testedAt": "2026-09-12T08:20:31.707Z"
+}

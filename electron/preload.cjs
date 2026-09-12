@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('aios', Object.freeze({
     return () => ipcRenderer.removeListener('aios:lab-progress', listener);
   },
   pickFolder: () => ipcRenderer.invoke('aios:pick-folder'),
+  openLink: url => ipcRenderer.invoke('aios:open-link', url),
   copyText: text => ipcRenderer.invoke('aios:copy', text),
   cancelScan: () => ipcRenderer.invoke('aios:cancel-scan'),
   onProgress: callback => {

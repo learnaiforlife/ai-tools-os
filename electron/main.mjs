@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog, clipboard, ipcMain, protocol, session } from 'electron';
+import { app, BrowserWindow, Menu, dialog, clipboard, ipcMain, protocol, session, shell } from 'electron';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
@@ -17,13 +17,15 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'aios', privileges: { standard: 
 let worker, workerFailure, serial = 0, busy = false, currentOperation, quitting = false;
 let labWorker, labFailure, labClosed = false;
 const labPending = new Map();
-const LAB_OPERATIONS = new Set(['status', 'list', 'get', 'cancel', 'delete', 'feedback', 'files.text', 'install', 'convert', 'memory.check', 'memory.ai', 'evaluate', 'trigger', 'improve', 'proposal', 'analyze', 'package']);
+const LAB_OPERATIONS = new Set(['ai.status', 'ai.context', 'ai.draft', 'ai.review', 'ai.suite', 'ai.propose', 'ai.cleanup', 'status', 'list', 'get', 'cancel', 'delete', 'feedback', 'files.text', 'install', 'convert', 'memory.check', 'memory.ai', 'evaluate', 'trigger', 'improve', 'proposal', 'analyze', 'package']);
+for (const operation of ['insights.sessions', 'insights.news', 'insights.news.preview', 'ai.reviewAll', 'evaluate.quick']) LAB_OPERATIONS.add(operation);
 function labBackend(operation, args = {}) {
   if (labFailure) return Promise.resolve({ ok: false, error: labFailure, code: 'BACKEND_FAILED' });
   if (labPending.size > 20) return Promise.resolve({ ok: false, error: 'Too many pending requests.', code: 'BUSY' });
   return new Promise(done => { const id = ++serial; labPending.set(id, done); labWorker.postMessage({ id, operation, args }); });
 }
 const pending = new Map(), cancelBuffer = new SharedArrayBuffer(4), cancellation = new Int32Array(cancelBuffer);
+const backendQueue = [];
 export function validateSender(event) {
   if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame || !trusted(event.senderFrame.url) || event.sender.isDestroyed()) throw Error('Untrusted renderer request.');
 }
@@ -32,7 +34,10 @@ function backend(operation, args) {
     if (typeof operation !== 'string' || operation.length > 80 || !args || typeof args !== 'object' || Array.isArray(args) || Buffer.byteLength(JSON.stringify(args)) > 2 * 1024 * 1024 + 65536) throw Error();
   } catch { return Promise.resolve({ ok: false, code: 'INVALID', error: 'Invalid or oversized request.' }); }
   if (workerFailure) return Promise.resolve({ ok: false, code: 'BACKEND_FAILED', error: workerFailure });
-  if (busy) return Promise.resolve({ ok: false, code: 'BUSY', error: 'An operation is already running. Please wait.' });
+  if (busy) {
+    if (backendQueue.length >= 20) return Promise.resolve({ ok: false, code: 'BUSY', error: 'Too many pending operations. Please wait.' });
+    return new Promise(done => backendQueue.push({ operation, args, done }));
+  }
   busy = true; currentOperation = operation; Atomics.store(cancellation, 0, 0);
   return new Promise(resolveRequest => { const id = ++serial; pending.set(id, resolveRequest); worker.postMessage({ id, operation, args }); });
 }
@@ -40,6 +45,7 @@ function failWorker(error) {
   workerFailure = `The local engine stopped: ${error.message || error}. Restart AIOS; pending transactions will be checked on startup.`;
   busy = false;
   for (const done of pending.values()) done({ ok: false, code: 'BACKEND_FAILED', error: workerFailure }); pending.clear();
+  for (const item of backendQueue.splice(0)) item.done({ ok: false, code: 'BACKEND_FAILED', error: workerFailure });
 }
 async function createWindow() {
   const win = new BrowserWindow({ width: 1440, height: 960, minWidth: 720, minHeight: 520, title: 'AI Tools OS', backgroundColor: '#0c0d11', show: false,
@@ -100,7 +106,9 @@ async function start() {
   labWorker.on('error', failLab); labWorker.on('exit', code => { if (!quitting) failLab(Error(`Worker exited (${code})`)); });
   worker.on('message', message => {
     if (message.progress) { for (const win of BrowserWindow.getAllWindows()) win.webContents.send('aios:progress', message.progress); return; }
-    const done = pending.get(message.id); pending.delete(message.id); busy = false; done?.(message.result);
+    const done = pending.get(message.id); pending.delete(message.id); busy = false;
+    const next = backendQueue.shift(); if (next) void backend(next.operation, next.args).then(next.done);
+    done?.(message.result);
   });
   worker.on('error', failWorker); worker.on('exit', code => { if (!quitting) failWorker(Error(`Worker exited (${code})`)); });
   ipcMain.handle('aios:request', (event, operation, args) => { validateSender(event); return backend(operation, args); });
@@ -130,6 +138,15 @@ async function start() {
     validateSender(event);
     if (typeof text !== 'string' || Buffer.byteLength(text) > 2 * 1024 * 1024) return { ok: false, error: 'Clipboard text exceeds the 2 MiB limit.' };
     try { clipboard.writeText(text); return { ok: true }; } catch { return { ok: false, error: 'Could not write to the system clipboard.' }; }
+  });
+  ipcMain.handle('aios:open-link', async (event, value) => {
+    validateSender(event);
+    try {
+      if (typeof value !== 'string' || value.length > 4000) throw Error();
+      const url = new URL(value);
+      if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw Error();
+      await shell.openExternal(url.href); return { ok: true };
+    } catch { return { ok: false, error: 'Only valid public HTTP or HTTPS links can be opened.' }; }
   });
   ipcMain.handle('aios:cancel-scan', event => {
     validateSender(event);

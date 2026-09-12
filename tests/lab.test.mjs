@@ -219,7 +219,7 @@ test('blind judge failures stop spending and suppress incomplete improvement cla
     const j = await done(lab, r.job.id);
     assert.equal(j.status, 'failed'); assert.equal(j.code, code); assert.equal(calls, 3);
     assert.equal(j.result.samples.length, 2); assert.equal(j.result.complete, false); assert.equal(j.result.summary.delta, null);
-    assert.equal(j.result.comparisons[0].code, code); assert.equal(j.result.cost, 0.02);
+    assert.equal(j.result.comparisons[0].code, code); assert.equal(j.result.cost, null); assert.equal(j.result.knownCost, 0.02);
   }
 });
 test('job storage rejects a symlink before changing destination permissions', t => {
@@ -241,5 +241,24 @@ test('malformed model answers and rewrite rationales are rejected before renderi
   await assert.rejects(invalidAnswer.call({ prompt: 'test', directory: f.home, settings, signal: new AbortController().signal, budget: { limit: 1, spent: 0 } }), { code: 'ENGINE_RESPONSE' });
   const evaluator = createEvaluator({ home: f.home, env: {}, run: fakeRun(() => response('', { structured_output: { content: fs.readFileSync(f.skill, 'utf8'), rationale: { invalid: true } } })) });
   const lab = createLab({ home: f.home, env: {}, service: f.service, evaluator }); const r = await lab.request('proposal', { id: f.resource.id, settings });
-  const j = await done(lab, r.job.id); assert.equal(j.status, 'failed'); assert.equal(j.code, 'INVALID');
+  const j = await done(lab, r.job.id); assert.equal(j.status, 'failed'); assert.equal(j.code, 'JUDGE_RESPONSE');
+});
+
+test('evaluation expands test input variables for execution, grading and comparison', async t => {
+  const f = fixture(t), calls = [];
+  const evaluator = createEvaluator({ home: f.home, env: {}, run: fakeRun((args, options) => {
+    calls.push(options.input);
+    const schema = args.includes('--json-schema') ? JSON.parse(args[args.indexOf('--json-schema') + 1]) : null;
+    if (schema?.properties.expectations) {
+      assert.equal(JSON.parse(options.input).task, 'hello');
+      return response('', { structured_output: { expectations: [{ text: 'Correct word', passed: true, evidence: 'Output HELLO' }] } });
+    }
+    if (schema?.properties.winner) { assert.equal(JSON.parse(options.input).task, 'hello'); return response('', { structured_output: { winner: 'TIE', reasoning: 'Same output' } }); }
+    assert.equal(options.input, 'hello'); return response('HELLO');
+  }) });
+  const cases = validateSuite({ evals: [{ id: 'word', prompt: '{{input}}', variables: { input: 'hello' }, assertions: [{ type: 'judge', text: 'Correct word' }] }] });
+  const dir = join(f.home, 'eval'); fs.mkdirSync(dir);
+  const r = await evaluator.evaluate({ source: f.resource, candidate: 'Uppercase.', suite: cases, mode: 'evaluate', settings: { ...settings, blind: true }, directory: dir, signal: new AbortController().signal, progress() {}, update() {}, budget: { spent: 0, limit: 1 } });
+  assert.equal(r.complete, true); assert.equal(calls.length, 5);
+  assert.throws(() => validateSuite({ evals: [{ prompt: '{{missing}}', assertions: [{ type: 'equals', value: 'A' }] }] }), { code: 'INVALID' });
 });

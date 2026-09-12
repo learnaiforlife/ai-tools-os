@@ -41,13 +41,21 @@ npm run test:labs:desktop # new UI workflows; run test:conversion first
 
 ## Evaluation and conversion workspaces
 
-Version 1.3.0 adds Skill Lab (paired evaluations, A/B judging, trigger tests and improvement/retest), Memory Review (local/contextual findings and reviewed edits/moves), and local MarkItDown conversion with automatic runtime setup. AI operations use an installed, authenticated Claude Code CLI. They run only when requested.
+Version 1.3.0 adds Skill Lab (paired evaluations, A/B judging, trigger tests and improvement/retest), Memory Review (local/contextual findings and reviewed edits/moves), and local MarkItDown conversion with automatic runtime setup. Version 1.4.0 adds a shared AI runtime for Claude Code, Codex CLI and Cursor Agent. It supports AI resource drafting, generated test suites, prompt/agent/command evaluations, selected-resource security reviews and optional Markdown cleanup. AI runs use native CLI authentication and start only when requested; Local only provides templates and deterministic checks without fabricated behavioral scores. See the [AI implementation and validation record](docs/AI_INTEGRATION_IMPLEMENTATION.md).
 
 Read the [usage guide](docs/EVALUATION_GUIDE.md), [design](docs/EVALUATION_DESIGN.md) and [review/acceptance record](docs/EVALUATION_REVIEW.md) for capabilities, validation and remaining live-model acceptance.
 
+## Workspace experience in 1.5.0
+
+The new Overview links session evidence, official release headlines, cleanup and a whole-workspace AI review. Sessions and Context explorer separate measured input usage from configured-text estimates and unknown initial loading. MCP recommendations require three recent sessions with complete tool-event coverage; optional local Claude/Cursor observers capture future metadata without retaining prompts or tool results.
+
+Resource pages have user/project/folder tabs, search, sorting, selection, compact action menus and a persistent details toggle. Markdown opens as a readable document. Enhance uses the saved AI engine; Enhance with options lets you choose first. Quick Skill Lab generates four text tests and measures the saved instructions; Advanced keeps A/B, held-out improvement and file-test controls. Cleanup previews reversible changes and retains conflict checks and recovery.
+
+Read the [experience plan](docs/EXPERIENCE_PLAN.md) and [implementation, review and validation](docs/EXPERIENCE_IMPLEMENTATION.md).
+
 ## Explicit boundaries
 
-Inventory is **configured state**, not a claim that a provider has connected or loaded a resource. Project trust, precedence, remote/managed policy, actual token usage and runtime health remain provider responsibilities. Managed Claude sources are read-only. Plugin caches, remote settings and session stores are outside the current adapters.
+Inventory is **configured state**, not a claim that a provider has connected or loaded a resource. Project trust, precedence, remote/managed policy, actual token usage and runtime health remain provider responsibilities. Managed Claude sources are read-only. Plugin caches and remote settings remain outside the resource adapters. Session Insight separately reads bounded local session metadata; missing history and native telemetry remain unavailable.
 
 Prototype runtime start/stop controls, provider sandbox controls and fabricated historical charts remain retired. The new evaluation runner supports text and confined file tools; shell commands, MCPs and external application tasks are unavailable in this release. Conversion has explicit document-format and extraction limits; see the evaluation guide.
 
@@ -57,7 +65,7 @@ The desktop app has no listening filesystem HTTP server. Its renderer uses a nar
 
 Discovery and filesystem work run in a worker. Project indexing skips provider caches and skill support directories, streams directory enumeration, and checks selected folders before recursive discovery. Each root has a directory/native-resource work budget; a shared time limit and depth bound keep scans responsive. Ordinary files are not opened. Missing folders, malformed sources and broken links are reported while valid siblings remain visible. Writes require a currently discovered resource or a provider-specific creation destination. Symlink targets outside selected roots are rejected; authorized file links are preserved.
 
-AIOS stores state in `~/.aios/state-v2.json` and the latest 100 transaction journals in `~/.aios/history`. Directories are owner-only and journals are mode `0600`. Existing file modes are retained. Unique temporary files, fsync, revision checks, a process lock, before-images and rollback protect mutations. Old disabled data can be imported once from Settings without guessing project provenance.
+AIOS stores state in `~/.aios/state-v2.json` and the latest 100 transaction journals in `~/.aios/history`. Directories are owner-only and journals are mode `0600`. Existing file modes are retained. Unique temporary files, fsync, revision checks, a process lock, before-images and rollback protect mutations. Old disabled data can be imported once from Settings without guessing project provenance. Import preserves the original global Claude destinations; if current Claude path overrides point elsewhere, restore the default paths before importing.
 
 A crashed transaction is checked at the next request. If a third-party edit makes recovery ambiguous, AIOS preserves the files and blocks further mutations. History remains inspectable; review the before-images and pending journal before reconciling files. Backups are local plaintext protected by filesystem permissions, not an encrypted credential vault. Providers do not participate in AIOS's lock, so concurrent provider writes cannot be made globally transactional.
 
@@ -89,6 +97,8 @@ The `site/` directory is a separate static landing page. It displays no installe
 - `scripts/lib/discovery.mjs`: provider/source inventory; `formats.mjs`: YAML/TOML/native format handling.
 - `scripts/lib/storage.mjs`: protected writes, locking, journaling and recovery; `service.mjs`: source-aware operations.
 - `tests/`: fixture-based regression and real Electron UI tests. They do not mutate the developer's actual tool configuration.
-- [Implementation and release requirements](docs/IMPLEMENTATION.md). Detailed local machine diagnostics are excluded from this validation branch.
+- [Original audit](docs/review-2026-09-09/PROJECT_REVIEW.md) and [bug-by-bug resolutions](docs/fixes-2026-09-09/RESOLUTION.md).
+- [Completion plan](docs/fixes-2026-09-09/COMPLETION_PLAN.md) and [requirement audit](docs/fixes-2026-09-09/COMPLETION_AUDIT.md) for the follow-up implementation.
+- [September 10 release validation](docs/fixes-2026-09-09/RELEASE_VALIDATION.md) for subsequent fixes, clean source commits, native Mac CI and the remaining distribution requirements.
 
-Older page modules remain as unshipped design references; see `src/README.md`. Earlier uncommitted prototype work and local machine diagnostics remain in the original development checkout.
+Older page modules remain as unshipped design references; see `src/README.md`. The original workspace's existing changes remain intact. Curated implementation commits and a separate source-only CI branch are recorded in the release validation report; main has not been merged and no installer has been published.

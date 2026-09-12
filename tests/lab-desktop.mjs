@@ -4,12 +4,14 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { runAIUat } from './ai-uat.mjs';
+import { seedExperienceUat, runExperienceUat } from './experience-uat.mjs';
 import { seedLabUat, runLabUat } from './lab-uat.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..'), base = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'aios-lab-desktop-'))), home = join(base, 'User ü'), fixture = join(base, 'App ü');
 const nodePath = process.env.npm_node_execpath;
 if (!nodePath) throw Error('Run this through npm run test:labs:desktop so the fixture can find Node.');
-seedLabUat(home, nodePath);
+seedLabUat(home, nodePath); seedExperienceUat(home);
 const put = (file, value) => { fs.mkdirSync(dirname(file), { recursive: true }); fs.writeFileSync(file, value); };
 put(join(fixture, 'electron/main.mjs'), fs.readFileSync(join(repo, 'electron/main.mjs'), 'utf8').replace('workerData: { cancelBuffer }', `workerData: { cancelBuffer, fixtureHome: ${JSON.stringify(home)} }`));
 for (const name of fs.readdirSync(join(repo, 'electron')).filter(n => n !== 'main.mjs')) put(join(fixture, 'electron', name), fs.readFileSync(join(repo, 'electron', name)));
@@ -45,6 +47,8 @@ try {
     const invalid = await js("window.aios.lab('files.register',{paths:['/etc/passwd']})"); assert.equal(invalid.ok, false);
     fs.writeFileSync(join(out, 'markdown-converter.png'), await capture());
   });
+  await runAIUat({ evaluate: js, home, output: out, screenshot: capture, probe });
+  await runExperienceUat({ evaluate: js, home, output: out, screenshot: capture, probe });
   await probe('New pages remain usable at a narrow size in light mode', async () => {
     win.setSize(800, 700); await js("document.documentElement.setAttribute('data-theme','light')"); await pause();
     assert.equal(await js('document.documentElement.scrollWidth <= innerWidth'), true); fs.writeFileSync(join(out, 'labs-light-small.png'), await capture());
