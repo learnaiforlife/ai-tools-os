@@ -193,7 +193,10 @@ export function createLab(options = {}) {
       } else if (operation === 'export.content') {
         const job = get(args.id);
         if (args.format === 'markdown' && job.kind === 'convert') {
-          const doc = job.result?.documents?.[args.index]; if (!doc || doc.status !== 'completed') fail('NOT_FOUND', 'Select a completed document.'); result = { content: doc.content, name: doc.name.replace(/\.[^.]+$/, '') + '.md' };
+          const documents = job.result?.documents || [], doc = documents[args.index];
+          if (!doc || doc.status !== 'completed') fail('NOT_FOUND', 'Select a completed document.');
+          const stem = doc.name.replace(/\.[^.]+$/, ''), collisions = documents.filter(item => item.name.replace(/\.[^.]+$/, '') === stem).length;
+          result = { content: doc.content, name: collisions > 1 ? `${doc.name}.md` : `${stem}.md` };
         } else if (args.format === 'package') {
           if (!job.result?.package) fail('NOT_FOUND', 'No completed skill package exists.');
           const bytes = readArtifact(join(directory(job.id), 'candidate.skill'), 50 * 1024 * 1024); if (hash(bytes) !== job.result.package.digest) fail('CONFLICT', 'The skill package changed after creation.');

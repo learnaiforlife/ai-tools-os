@@ -120,10 +120,11 @@ test('improvement requires training and holdout cases and does not overwrite ins
 test('conversion snapshots selected input and retains errors for unsupported files', async t => {
   const f = fixture(t), converter = { status: () => ({ installed: true }), convert: async path => ({ content: fs.readFileSync(path, 'utf8'), warnings: [] }) };
   const lab = createLab({ home: f.home, env: {}, service: f.service, converter });
-  const path = f.put('input ü/converted.md', 'Document content'), selection = await lab.request('files.register', { paths: [path] });
+  const path = f.put('input ü/converted.md', 'Document content'), sameStem = f.put('other/converted.txt', 'Second document'), selection = await lab.request('files.register', { paths: [path, sameStem] });
   const r = await lab.request('convert', { tokens: selection.files.map(f => f.token) }); const j = await done(lab, r.job.id);
   assert.equal(j.status, 'completed'); assert.equal(j.result.documents[0].content, 'Document content');
-  assert.equal((await lab.request('export.content', { id: j.id, format: 'markdown', index: 0 })).content, 'Document content');
+  const first = await lab.request('export.content', { id: j.id, format: 'markdown', index: 0 }), second = await lab.request('export.content', { id: j.id, format: 'markdown', index: 1 });
+  assert.equal(first.content, 'Document content'); assert.equal(first.name, 'converted.md.md'); assert.equal(second.name, 'converted.txt.md');
   assert.equal(fs.readFileSync(path, 'utf8'), 'Document content'); assert.equal((await lab.request('convert', { tokens: ['unregistered'] })).ok, false);
 });
 test('job cancellation leaves history, allows retry and blocks concurrent starts', async t => {
