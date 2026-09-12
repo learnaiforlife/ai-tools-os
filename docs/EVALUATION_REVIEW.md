@@ -1,8 +1,8 @@
 # Evaluation workspaces: implementation review and acceptance
 
-Date: 2026-09-11. Version: 1.3.0. Source branch: `codex/evaluation-workspaces`. Application implementation: `e8a8fa6e77a8afeda99e4835de2b38d023104547`; final tested source and UAT: `8cc2d1901ed0fc003dc03064cea0a81a55a11519`. Later documentation changes do not change the tested application.
+Date: 2026-09-11. Version: 1.3.0. Source branch: `codex/evaluation-workspaces`. Application implementation: `e8a8fa6e77a8afeda99e4835de2b38d023104547`; final release source and clean CI: `9115e8df3db7a0a6ae89ea3f4954ea96017dec40`. Changes after the application commit are tests, documentation and release metadata.
 
-The three workspaces are implemented. Local checks, real document conversion and fixture-based application workflows have passed. Live Claude model acceptance remains blocked by an expired OAuth session; simulated model results are not evidence of live model quality. Production downloads remain at 1.2.1 while that check is outstanding.
+The three workspaces are implemented. Local checks, real document conversion, fixture-based application workflows and live Claude model acceptance have passed. Version 1.3.0 is published as an ad-hoc signed beta for Apple Silicon and Intel, and the production download site exposes the verified artifacts.
 
 ## Delivered behavior
 
@@ -27,7 +27,7 @@ Review followed the complete data flow: React controls → isolated preload IPC 
 | Python cannot open a helper inside Electron ASAR as a normal file. | Read the bundled adapter through Electron/Node and pass its source to isolated Python. Packaged UAT exercises actual conversion. |
 | An AI memory review's text summary could be rendered as a benchmark object. | Render results by their validated shapes; AI review UI UAT checks the real renderer path with a structured CLI fixture. |
 | Malformed model answer/rationale types could reach React. | Reject invalid result types at the evaluator/job boundary. Regression tests exercise object-valued responses. |
-| Restricted Claude ignored implicit project skill registration. | Load a temporary explicit plugin for trigger tests and verify its initialization event before recording a score. Actual CLI registration was checked; real model triggering still needs authentication. |
+| Restricted Claude ignored implicit project skill registration. | Load a temporary explicit plugin for trigger tests and verify its initialization event before recording a score. Actual CLI registration and a real-model trigger/no-trigger pair passed. |
 | Trigger initialization failure could omit already-reported cost. | Account for returned cost before validating registration, then stop the unusable run. Regression verifies one call, retained cost and no false-negative score. |
 | A timeout or missing usage during blind judging could permit subsequent paid calls. | Use the same fatal-error handling for tasks and judges. Timeout/auth/invalid-engine regression cases stop after the first failed judge and retain prior results. |
 | A partial matching pair could show an improvement delta before the requested run finished. | Withhold delta until all requested samples and optional comparisons complete successfully. Partial averages remain visible with an incomplete-run notice. |
@@ -48,21 +48,22 @@ Review followed the complete data flow: React controls → isolated preload IPC 
 | Real converter integration | 9/9 checks pass: absent-runtime installation, CSV/HTML/XLSX/PPTX/DOCX/PDF extraction, empty extraction warning and malformed PDF rejection. |
 | New Electron workflows | 10/10 acceptance checks pass: reviewed memory edits/moves, contextual review rendering, measured A/B fixture results, stale-save rejection, cancellation/navigation, converter UI, native picker/Save As, narrow light layout and no renderer errors. Model calls use a deterministic CLI double; conversion uses actual MarkItDown. |
 | Final packaged applications | Apple Silicon and Intel/Rosetta: 33/33 workflows pass on each. Both DMG/ZIP contents, ad-hoc signatures, source equality, final hashes, actual conversion, native save and reinstall persistence pass. |
-| Final native CI | Both native Apple Silicon (`macos-15`) and Intel (`macos-15-intel`) pass all checks, actual converter setup, desktop UAT, dependency audits and package validation. [Run 34654939930](https://github.com/learnaiforlife/ai-tools-os/actions/runs/34654939930), tested commit `8cc2d1901ed0fc003dc03064cea0a81a55a11519`. |
+| Final native CI | Both native Apple Silicon (`macos-15`) and Intel (`macos-15-intel`) pass all checks, actual converter setup, desktop UAT, dependency audits and package validation. [Run 34670864973](https://github.com/learnaiforlife/ai-tools-os/actions/runs/34670864973), tested commit `9115e8df3db7a0a6ae89ea3f4954ea96017dec40`. |
 | Live CLI mechanics | Installed Claude Code 2.1.267 supports the required flags; actual restricted initialization loads the explicit evaluation plugin without unrelated user plugins or MCPs. |
-| Live model acceptance | Pending: the existing Claude OAuth session has expired and cannot refresh. No successful live A/B, grader, optimizer, trigger or AI-memory result is claimed. |
+| Live model acceptance | Passed with Claude Code 2.1.267 using synthetic fixtures: paired task A/B 0% → 100%, deterministic and structured model grading, blind candidate win, native trigger 0% → 100%, structured memory feedback, structured rewrite, real output-file creation 0% → 100%, and improvement retesting with overall 50% → 100% plus held-out 0% → 100%. The tested source files remained unchanged. |
+| Publication | [GitHub prerelease v1.3.0-beta](https://github.com/learnaiforlife/ai-tools-os/releases/tag/v1.3.0-beta) contains both DMG and ZIP architectures. Both public DMGs were downloaded after publication and matched their manifest byte sizes and SHA-512 digests. [The production site](https://site-six-delta-67.vercel.app/#install) renders version 1.3.0, both download choices and the Apple notarization warning. |
 
 Reproducible commands: `npm run check`, `npm run test:desktop`, `npm run test:conversion`, `npm run test:labs:desktop`, and `npm run dist:mac:local`. The CI workflow runs these on native Apple Silicon and Intel runners and uploads test results.
 
-## Remaining acceptance and supported limits
+## Supported limits and model variability
 
-After `claude auth login`, run small real-model acceptance suites for task comparison, structured grading, blind judgments, file output, native triggering, memory review/rewrite and training/holdout improvement. Verify actual usage reporting and rendered results. Any engine incompatibility discovered there must be corrected before claiming full live acceptance.
+Live acceptance reports the usage returned by Claude Code. One natural-language trigger probe did not activate the skill, while the explicit isolated trigger case did; this is expected model variability and is why trigger suites should contain several representative positive and negative prompts. An initial improvement fixture used ambiguous language about a “code” and produced an instruction aimed at code blocks rather than the intended identifier. A clearer task definition produced a candidate that passed both training and held-out behavior. Neither run overwrote its source. These results demonstrate the complete workflow and its evidence boundaries; they do not make a universal claim about model quality.
 
 The initial evaluation provider is Claude Code. Its restricted task mode supports text and confined file tools, not shell commands, MCPs or external applications. This does not cover every execution mode of the upstream skill-creator. Native description tests are isolated tests, not competition against every installed skill. AI judgments and small-sample scores are not universal quality measurements.
 
 Conversion supports the document formats listed in `EVALUATION_GUIDE.md`; cloud OCR, audio/video transcription, password-protected documents and archive batches are outside this release. The real conversion corpus covers six common formats, not every possible input or advertised format. macOS 13+ is the declared minimum; native CI uses macOS 15, so successful CI is not a claim that every macOS version was exercised.
 
-These results establish the tested behavior, not the absence of all possible defects. The source and local beta installers are separate from the currently published 1.2.1 download.
+These results establish the tested behavior, not the absence of all possible defects. The published beta is ad-hoc signed and is not Apple notarized; the download site accurately describes the required first-launch approval.
 
 ## Related documents
 
