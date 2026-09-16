@@ -8,15 +8,15 @@
     {
       "name": "AI-Tools-OS-1.5.1-arm64.dmg",
       "arch": "arm64",
-      "size": 130080030,
-      "sha512": "3Oyz/JWYSVzkX1ostXdm2mFlk5ugBgYUVF41dgrYe48KqF7t0dnJqlM//uHLAtsjSe0meAYUmxBEL+nq+oRhTA==",
+      "size": 130080146,
+      "sha512": "j89KK6lUJJAHj+k1Qu/lTN5zmb3rvCwtNGUFEvRknBZQCECeYXUYqg9hDX5roY8JoGj3iyJiVuvdDOGkXEknFQ==",
       "url": "https://github.com/learnaiforlife/ai-tools-os/releases/download/v1.5.1-beta/AI-Tools-OS-1.5.1-arm64.dmg"
     },
     {
       "name": "AI-Tools-OS-1.5.1-x64.dmg",
       "arch": "x64",
-      "size": 137352405,
-      "sha512": "RA4uTS/4lmnGBZDfxk5t/01/Qr5ZMcQ5cbwS5xZA88pp60wqCTy5clNGkjtfCpflY9obr+IGqCs93qJLyfZ3lQ==",
+      "size": 137352431,
+      "sha512": "J7sbOZBw08aocGK5wifJIBdMkH7fAUUs/XF54W06GT1QL8xacY57F1J3w8xhijnuG+9I9AHWuItGvVT7B6PGTQ==",
       "url": "https://github.com/learnaiforlife/ai-tools-os/releases/download/v1.5.1-beta/AI-Tools-OS-1.5.1-x64.dmg"
     }
   ]
