@@ -60,8 +60,12 @@ export function createService(options = {}) {
   const revision = (resource, wanted) => { if (typeof wanted !== 'string' || resource.revision !== wanted) fail('CONFLICT', 'Resource changed on disk. Refresh and review your draft.'); };
   function checkedPath(path, state) {
     const dirs = providerPaths(home, env, state.preferences), real = canonical(path);
-    const roots = [dirs.claude, dirs.codex, dirs.cursor, dirs.shared, ...state.roots].map(canonical);
-    const claudeFile = join(canonical(dirname(dirs.claudeJson)), basename(dirs.claudeJson));
+    // An unrelated missing/broken/restricted root must not prevent editing a
+    // healthy resource. Unresolvable roots grant no access; never trust the
+    // lexical path as a substitute for its canonical destination.
+    const roots = [dirs.claude, dirs.codex, dirs.cursor, dirs.shared, ...state.roots].flatMap(root => { try { return [canonical(root)]; } catch { return []; } });
+    let claudeFile;
+    try { claudeFile = join(canonical(dirname(dirs.claudeJson)), basename(dirs.claudeJson)); } catch { /* This source grants no access. */ }
     if (real !== claudeFile && !roots.some(root => inside(real, root))) fail('READ_ONLY', 'The file resolves outside selected provider and project folders.');
     return real;
   }

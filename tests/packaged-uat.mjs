@@ -200,7 +200,7 @@ export async function runPackagedUat({ session, home, results, output }) {
   await step('unsupported native files report an issue without hanging the scan', async () => {
     const path = join(home, '.claude/CLAUDE.md'); execFileSync('/usr/bin/mkfifo', [path]);
     try {
-      await nav('Overview'); await sync(); assert.ok((await mainText()).includes('NOT_FILE'));
+      await nav('Scan report'); await sync(); await js("document.querySelector('.scan-issue-group').open=true;true"); assert.ok((await mainText()).includes('NOT_FILE'));
       assert.ok(fs.lstatSync(path).isFIFO());
     } finally { fs.unlinkSync(path); await sync(); }
     assert.ok(!(await mainText()).includes('NOT_FILE'));
@@ -216,9 +216,10 @@ export async function runPackagedUat({ session, home, results, output }) {
     try {
       fs.writeFileSync(path, '---\nname: UAT skill\ndescription: secret-fixture: invalid colon\n---\nBody'); fs.writeFileSync(legacy, '{}');
       await nav('Skills'); await sync(); const text = await mainText();
-      assert.ok(text.includes('Scan completed. 1 resource headers need review')); assert.ok(text.includes('line 3')); assert.ok(text.includes('Quote text'));
+      assert.ok(text.includes('Header needs review'));
+      await js("document.querySelector('.resource-warning').open=true;true"); const warning = await mainText(); assert.ok(warning.includes('line 3')); assert.ok(warning.includes('Quote text'));
       assert.ok(!text.includes('narrower folders')); assert.ok(!text.includes('secret-fixture'));
-      await button('Review resource headers'); await wait("document.querySelector('main h1')?.textContent==='Overview'");
+      await nav('Overview');
       assert.ok((await mainText()).includes('Older AIOS data available'));
       fs.writeFileSync(path, original); await sync();
       assert.equal(await js("document.querySelectorAll('main [role=alert]').length"), 0); assert.ok(!(await mainText()).includes('Discovery issues')); assert.equal((await session.request('inventory')).issues.filter(i => i.code !== 'LEGACY_DATA').length, 0);
@@ -231,7 +232,7 @@ export async function runPackagedUat({ session, home, results, output }) {
     const original = '\uFEFF---\r\nname: Fresh machine\r\ndescription: Plan tasks: carefully\r\n---\r\nKeep the complete body\r\n';
     try {
       fs.writeFileSync(path, original); await nav('Overview'); await sync();
-      assert.ok((await mainText()).includes('Resource metadata needs review (1)'));
+      assert.ok((await mainText()).includes('Scan completed with notices')); await button('View scan report');
       assert.ok(!(await mainText()).includes('Scan stopped'));
       await js("[...document.querySelectorAll('main button')].find(b=>b.textContent==='Review file').closest('details').querySelector('summary').click()"); await button('Review file'); await wait("!!document.querySelector('dialog .markdown-reader')"); await button('Edit source'); await content();
       await button('Preview header repair'); await wait("!!document.querySelector('dialog .wb-diff')");
@@ -242,7 +243,7 @@ export async function runPackagedUat({ session, home, results, output }) {
       await wait("[...document.querySelectorAll('dialog button')].some(b=>b.textContent==='Save changes'&&!b.disabled)");
       await button('Save changes'); await finish();
       assert.equal(fs.readFileSync(path, 'utf8'), original.replace('Plan tasks: carefully', '"Plan tasks: carefully"'));
-      assert.ok(!(await mainText()).includes('Resource metadata needs review'));
+      assert.equal(await js("document.querySelectorAll('.scan-issue-group').length"), 0);
       await nav('History & recovery'); await wait("document.querySelector('main').innerText.includes('fresh-machine')");
     } finally { fs.rmSync(dirname(path), { recursive: true, force: true }); await sync(); }
   });

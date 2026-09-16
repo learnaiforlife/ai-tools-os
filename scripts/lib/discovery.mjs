@@ -36,7 +36,21 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
   const io = fn => (...args) => { const at = now(); try { return fn(...args); } finally { ioMs += Math.max(0, now() - at); } };
   const diskExists = io(exists), resolvePath = io(canonical), readFile = io(readText);
   const stat = io(fs.statSync), list = io(fs.readdirSync), openDirectory = io(fs.opendirSync);
-  const issue = (path, error, code = 'SOURCE_ERROR', severity = 'error') => { if (severity === 'error') incomplete = true; issues.push({ path, code, message: error, severity }); };
+  // Coverage and run completion are different: recoverable source failures do
+  // not abort a scan. Keep incomplete for conservative whole-inventory actions.
+  const issueKeys = new Set();
+  const issue = (path, error, code = 'SOURCE_ERROR', severity = 'error') => {
+    if (severity === 'error') incomplete = true;
+    const disposition = ['SCAN_LIMIT', 'SCAN_TIMEOUT'].includes(code) ? 'limited'
+      : ['FRONTMATTER_INVALID', 'METADATA_INVALID', 'PARSE_ERROR', 'MCP_INVALID'].includes(code) ? 'review' : 'skipped';
+    const key = JSON.stringify([path, code, error]);
+    if (!issueKeys.has(key)) { issueKeys.add(key); issues.push({ path, code, message: error, severity, disposition }); }
+  };
+  const sourceError = (path, e) => issue(path,
+    ['EACCES', 'EPERM'].includes(e.code) ? 'Access is restricted by macOS or organization policy. This path was skipped; other files were scanned.'
+      : e.code === 'ENOENT' ? 'The path or symbolic-link target no longer exists. It was skipped.'
+        : e.code === 'ELOOP' ? 'This symbolic link forms a loop. It was skipped.'
+          : e.code === 'ENOTDIR' ? 'A folder in this path is no longer a directory. It was skipped.' : e.message, e.code || 'SOURCE_ERROR');
   const canonicalRoots = paths => paths.flatMap(path => { try { return [resolvePath(path)]; } catch (e) { issue(path, 'Cannot resolve the configured folder.', e.code); return []; } });
   const nativeRoots = canonicalRoots(Object.values(dirs).filter(p => p !== dirs.claudeJson));
   const allowedRoots = [...nativeRoots, ...canonicalRoots(roots)];
@@ -54,12 +68,18 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
     try { return fn(); }
     catch (e) {
       if (['SCAN_LIMIT', 'SCAN_TIMEOUT', 'CANCELED'].includes(e.code)) throw e;
-      issue(path, e.code === 'EACCES' || e.code === 'EPERM' ? 'Permission denied. Grant access in macOS Privacy settings.' : e.message, e.code || 'SOURCE_ERROR');
+      sourceError(path, e);
     }
   }
   function pass(path, fn) {
+    const previous = { passEntries, start, ioMs }, began = now();
     passEntries = 0; start = now(); ioMs = 0;
     try { fn(); } catch (e) { if (e.code === 'CANCELED') throw e; issue(path, e.message, e.code); }
+    finally {
+      // Native collections get independent budgets, including inside a project
+      // walk. A large commands tree cannot hide skills or later projects.
+      passEntries = previous.passEntries; start = previous.start + Math.max(0, now() - began); ioMs = previous.ioMs;
+    }
   }
   function add(path, kind, provider, project = null, extras = {}) {
     const scope = extras.managed ? 'managed' : project ? 'project' : 'user';
@@ -133,7 +153,7 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
           }
         } catch (e) { item.error = e.message; issue(path, e.message, 'PARSE_ERROR'); }
       }
-    } catch (e) { if (['SCAN_LIMIT', 'SCAN_TIMEOUT', 'CANCELED'].includes(e.code)) throw e; issue(path, e.code === 'EACCES' ? 'Permission denied. Grant access in macOS Privacy settings.' : e.message, e.code); }
+    } catch (e) { if (['SCAN_LIMIT', 'SCAN_TIMEOUT', 'CANCELED'].includes(e.code)) throw e; sourceError(path, e); }
   }
   function files(root, visit, depth = 0, seen = new Set()) {
     attempt(root, () => {
@@ -141,7 +161,7 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
       const real = resolvePath(root);
       if (!allowedRoots.some(r => inside(real, r))) { issue(root, 'Symbolic link target is outside selected folders.', 'SYMLINK_BOUNDARY'); return; }
       if (seen.has(real)) return; seen.add(real);
-      if (depth > 16) { incomplete = true; issue(root, 'Depth limit reached; add this folder as a scan root.', 'SCAN_LIMIT'); return; }
+      if (depth > 16) { issue(root, 'Depth limit reached; add this folder as a scan root.', 'SCAN_LIMIT'); return; }
       for (const entry of list(root, { withFileTypes: true })) {
         check(root);
         if (SKIP.has(entry.name) || entry.name.startsWith('.aios-transfer-') || prefs.exclusions?.includes(entry.name)) continue;
@@ -154,31 +174,32 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
       }
     });
   }
+  const collection = (root, visit) => pass(root, () => files(root, visit));
   function provider(base, name, project, skillsOnly = false) {
     if (!skillsOnly && name === 'Claude Code') {
       for (const file of ['settings.json', 'settings.local.json']) add(join(base, file), 'config', name, project);
       for (const file of ['CLAUDE.md', 'CLAUDE.local.md']) add(join(base, file), 'memory', name, project);
       add(join(base, 'statusline.sh'), 'scripts', name, project);
-      files(join(base, 'commands'), p => { if (p.endsWith('.md')) add(p, 'commands', name, project); });
-      files(join(base, 'agents'), p => { if (p.endsWith('.md')) add(p, 'agents', name, project); });
+      collection(join(base, 'commands'), p => { if (p.endsWith('.md')) add(p, 'commands', name, project); });
+      collection(join(base, 'agents'), p => { if (p.endsWith('.md')) add(p, 'agents', name, project); });
     } else if (!skillsOnly && name === 'Codex') {
       add(join(base, 'config.toml'), 'config', name, project, { mcp: 'mcp_servers' });
-      files(join(base, 'agents'), p => { if (p.endsWith('.toml')) add(p, 'agents', name, project); });
+      collection(join(base, 'agents'), p => { if (p.endsWith('.toml')) add(p, 'agents', name, project); });
       for (const file of ['AGENTS.md', 'AGENTS.override.md']) add(join(base, file), 'memory', name, project);
     } else if (!skillsOnly && name === 'Cursor') {
       add(join(base, 'mcp.json'), 'config', name, project, { mcp: 'mcpServers' });
-      files(join(base, 'agents'), p => { if (p.endsWith('.md')) add(p, 'agents', name, project); });
-      files(join(base, 'commands'), p => { if (p.endsWith('.md')) add(p, 'commands', name, project); });
-      if (project) files(join(base, 'rules'), p => { if (p.endsWith('.mdc')) add(p, 'memory', name, project); });
+      collection(join(base, 'agents'), p => { if (p.endsWith('.md')) add(p, 'agents', name, project); });
+      collection(join(base, 'commands'), p => { if (p.endsWith('.md')) add(p, 'commands', name, project); });
+      if (project) collection(join(base, 'rules'), p => { if (p.endsWith('.mdc')) add(p, 'memory', name, project); });
     }
     // Native skill roots only: do not traverse cache, template or plugin folders.
     const skillRoot = join(base, 'skills');
-    attempt(skillRoot, () => {
+    pass(skillRoot, () => attempt(skillRoot, () => {
       if (diskExists(skillRoot)) for (const entry of list(skillRoot, { withFileTypes: true })) {
         check(skillRoot);
         if (!entry.name.startsWith('.') && (entry.isDirectory() || entry.isSymbolicLink())) add(join(skillRoot, entry.name, 'SKILL.md'), 'skills', name, project);
       }
-    });
+    }));
   }
   const visitedProjects = new Set();
   function project(root) {
@@ -198,32 +219,43 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
   // Project indexing inspects directory entries, never provider caches or skill
   // support trees. Resource adapters alone enumerate native provider folders.
   const indexed = new Set();
-  function index(root, depth = 0) {
-    attempt(root, () => {
-      if (!diskExists(root)) { issue(root, 'Selected folder no longer exists.', 'NOT_FOUND'); return; }
-      const real = resolvePath(root);
-      if (indexed.has(real)) return;
-      if (!allowedRoots.some(r => inside(real, r))) { issue(root, 'Symbolic link target is outside selected folders.', 'SYMLINK_BOUNDARY'); return; }
-      if (nativeRoots.some(r => inside(real, r)) || inside(real, resolvePath(join(home, '.aios')))) return;
-      if (depth > 16) { issue(root, 'Depth limit reached; select this folder directly.', 'SCAN_LIMIT'); return; }
-      indexed.add(real);
-      const directory = openDirectory(root), nextEntry = io(() => directory.readSync());
-      try {
-        let entry;
-        while ((entry = nextEntry())) {
-          // Ordinary files require no stat/content read. Bound actual directory
-          // and native-resource work, while checking time/cancellation for every
-          // entry. Stream enumeration instead of retaining enormous listings.
-          check(root, entry.isDirectory() || entry.isSymbolicLink() ? 1 : 0);
-          if (MARKERS.has(entry.name)) project(root);
-          if (SKIP.has(entry.name) || entry.name.startsWith('.aios-transfer-') || PROVIDER_DIRS.has(entry.name) || prefs.exclusions?.includes(entry.name)) continue;
-          const path = join(root, entry.name);
-          attempt(path, () => {
-            if (entry.isDirectory() || entry.isSymbolicLink() && stat(path).isDirectory()) index(path, depth + 1);
-          });
-        }
-      } finally { io(() => directory.closeSync())(); }
-    });
+  function index(root) {
+    // Breadth first: inspect peer projects before descending into large SDKs or
+    // worktree collections. A per-directory listing cap preserves queued peers.
+    const queue = [{ path: root, depth: 0 }];
+    for (let cursor = 0; cursor < queue.length; cursor++) {
+      const { path: current, depth } = queue[cursor];
+      check(current);
+      attempt(current, () => {
+        if (!diskExists(current)) { issue(current, 'Selected folder no longer exists.', 'NOT_FOUND'); return; }
+        const real = resolvePath(current);
+        if (indexed.has(real)) return;
+        if (!allowedRoots.some(r => inside(real, r))) { issue(current, 'Symbolic link target is outside selected folders.', 'SYMLINK_BOUNDARY'); return; }
+        if (nativeRoots.some(r => inside(real, r)) || inside(real, resolvePath(join(home, '.aios')))) return;
+        if (depth > 16) { issue(current, 'Depth limit reached; select this folder directly.', 'SCAN_LIMIT'); return; }
+        indexed.add(real);
+        const directory = openDirectory(current), nextEntry = io(() => directory.readSync());
+        let directoryEntries = 0;
+        try {
+          let entry;
+          while ((entry = nextEntry())) {
+            check(current, 0);
+            if (MARKERS.has(entry.name)) pass(current, () => attempt(current, () => project(current)));
+            if (SKIP.has(entry.name) || entry.name.startsWith('.aios-transfer-') || PROVIDER_DIRS.has(entry.name) || prefs.exclusions?.includes(entry.name)) continue;
+            if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+            if (++directoryEntries > maxEntries) { issue(current, 'Directory entry limit reached. Remaining entries here were skipped; queued folders were checked separately. Select a narrower folder or add exclusions.', 'SCAN_LIMIT'); break; }
+            const path = join(current, entry.name);
+            attempt(path, () => {
+              if (entry.isDirectory() || entry.isSymbolicLink() && stat(path).isDirectory()) {
+                // Bound memory even when many wide directories are queued.
+                if (queue.length >= maxEntries + 1) { issue(current, 'Folder limit reached. Additional descendants were skipped; already queued folders were checked separately.', 'SCAN_LIMIT'); return; }
+                queue.push({ path, depth: depth + 1 });
+              }
+            });
+          }
+        } finally { io(() => directory.closeSync())(); }
+      });
+    }
   }
   {
     for (const [base, name] of [[dirs.claude, 'Claude Code'], [dirs.codex, 'Codex'], [dirs.shared, 'Codex'], [dirs.cursor, 'Cursor']]) {
@@ -255,8 +287,13 @@ export function discover({ home = homedir(), env = process.env, roots = [], pref
     }
     if (item.project) projects.add(item.project);
   }
+  const skipped = issues.filter(i => i.disposition === 'skipped').length;
+  const warnings = issues.filter(i => i.disposition === 'review').length;
+  const limited = issues.filter(i => i.disposition === 'limited').length;
+  const scan = { completed: true, status: limited ? 'partial' : issues.length ? 'completed_with_skips' : 'completed',
+    skipped, warnings, limited, healthy: resources.filter(r => !r.error).length, issueCount: issues.length };
   progress({ entries, complete: true });
-  return { resources, issues, projects: [...projects].sort(), roots, providerPaths: dirs, providers: PROVIDERS, syncedAt: new Date().toISOString(), incomplete, entries,
+  return { resources, issues, projects: [...projects].sort(), roots, providerPaths: dirs, providers: PROVIDERS, syncedAt: new Date().toISOString(), incomplete, entries, scan,
     supportNotes: ['Inventory reports configured sources. Provider trust, precedence, runtime connections and remotely managed policies must be checked in the provider.',
       'Plugin caches, cloud settings, credentials and provider session history are not part of configuration discovery. Session insights reads bounded metadata separately.'] };
 }

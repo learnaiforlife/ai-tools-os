@@ -8,6 +8,7 @@ import { seedUat, runPackagedUat } from '../tests/packaged-uat.mjs';
 import { seedLabUat, runLabUat } from '../tests/lab-uat.mjs';
 import { runAIUat } from '../tests/ai-uat.mjs';
 import { seedExperienceUat, runExperienceUat } from '../tests/experience-uat.mjs';
+import { runScanUat } from '../tests/scan-uat.mjs';
 import { createConverter } from './lib/converter.mjs';
 
 const directory = resolve(process.argv[2] || 'release-local'), pkg = JSON.parse(fs.readFileSync('package.json'));
@@ -75,6 +76,10 @@ try {
     catch (error) { results.uat.push({ name, passed: false, error: error.stack }); throw error; }
   } });
   await runExperienceUat({ evaluate: session.evaluate, home, output: resolve('test-results'), probe: async (name, fn) => {
+    try { await fn(); results.uat.push({ name, passed: true }); console.log('PASS', name); }
+    catch (error) { results.uat.push({ name, passed: false, error: error.stack }); throw error; }
+  } });
+  await runScanUat({ evaluate: session.evaluate, home, output: resolve('test-results'), probe: async (name, fn) => {
     try { await fn(); results.uat.push({ name, passed: true }); console.log('PASS', name); }
     catch (error) { results.uat.push({ name, passed: false, error: error.stack }); throw error; }
   } });

@@ -29,3 +29,13 @@
 @media (max-width:850px) { .workspace-orbit { display:none; }.workspace-hero { grid-template-columns:1fr; }.overview-pulse { grid-template-columns:repeat(2,1fr); }.overview-pulse button { border-bottom:1px solid var(--line); }.overview-secondary { display:block; }.overview-secondary > * { margin-bottom:20px; }.session-workspace { grid-template-columns:1fr; }.session-list { max-height:280px; }.session-metrics { gap:8px; }.session-metrics > div { padding:14px; }.session-detail { padding:20px; }.page-lead { align-items:start; flex-direction:column; }.wb-resource { gap:10px; padding:16px; }.wb-resource-actions { max-width:125px; }.overview-pulse button { padding:18px; } }
 @media (prefers-reduced-motion:reduce) { *,*:before,*:after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
 .sr-only { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
+
+.scan-issue-group > summary { display: flex; gap: 12px; align-items: center; cursor: pointer; flex-wrap: wrap; }
+.scan-issue-group > summary::before { content: '▸'; }
+.scan-issue-group[open] > summary::before { content: '▾'; }
+.scan-issue-group > small { display: block; margin-top: 14px; }
+.scan-issue-path { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
+.scan-issue-path code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.resource-warning { margin: 10px 0; }
+.resource-warning > summary { cursor: pointer; color: var(--tx-mid); }
+@media (max-width: 760px) { .scan-issue-path { align-items: flex-start; flex-direction: column; } }

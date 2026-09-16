@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
+import { runScanUat } from './scan-uat.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const base = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), 'aios-desktop-test-'))), home = join(base, 'User space % ü'), fixtureApp = join(base, 'AI Tools OS space % ü');
@@ -193,6 +194,7 @@ async function run() {
       assert.equal(displayRecovery[0]?.message, 'AIOS could not display its interface');
       await waitFor("document.querySelector('.wb-status')?.textContent.includes('Inventory refreshed')");
     });
+    await runScanUat({ evaluate: js, home, output: join(repo, 'test-results'), screenshot: async () => { win.showInactive(); await sleep(300); return (await win.webContents.capturePage()).toPNG(); }, probe });
     await probe('no unexpected renderer errors occurred during desktop acceptance', async () => { assert.deepEqual(errors, []); });
     await nav('Overview'); await idle();
     await waitFor("!document.querySelector('dialog')");
