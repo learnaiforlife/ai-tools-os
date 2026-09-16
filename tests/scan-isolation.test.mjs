@@ -50,7 +50,7 @@ test('a wide unrelated directory preserves queued healthy peer projects and hone
   assert.ok(result.issues.some(i => i.disposition === 'limited'));
 });
 
-test('broken provider roots cannot block healthy edits or grant access through unresolved roots', t => {
+test('broken provider roots cannot block healthy edits or transfers, or grant access through unresolved roots', t => {
   const f = fixture(t), path = f.put('Documents/project/CLAUDE.md');
   fs.symlinkSync(join(f.home, 'missing'), join(f.home, '.codex'));
   const service = createService({ home: f.home, env: {}, managedRoots: [] });
@@ -58,6 +58,13 @@ test('broken provider roots cannot block healthy edits or grant access through u
   assert.equal(inv.ok, true); assert.equal(inv.scan.completed, true);
   const changed = service.request('resource.write', { id: resource.id, revision: resource.revision, content: 'Healthy updated' });
   assert.equal(changed.ok, true, changed.error); assert.equal(fs.readFileSync(path, 'utf8'), 'Healthy updated');
+  const updated = changed.resources.find(r => r.id === resource.id);
+  const args = { id: updated.id, revision: updated.revision, mode: 'copy', provider: 'Claude Code', scope: 'user', name: 'instructions' };
+  const preview = service.request('transfer.preview', args); assert.equal(preview.ok, true, preview.error);
+  const copied = service.request('transfer.apply', { ...args, previewRevision: preview.previewRevision });
+  assert.equal(copied.ok, true, copied.error); assert.equal(fs.readFileSync(join(f.home, '.claude/CLAUDE.md'), 'utf8'), 'Healthy updated');
+  const rejected = service.request('transfer.preview', { ...args, provider: 'Codex' });
+  assert.equal(rejected.ok, false);
   assert.equal(fs.existsSync(join(f.home, 'missing')), false);
 });
 

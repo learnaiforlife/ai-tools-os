@@ -20,6 +20,7 @@ function nameSafe(value) {
 }
 const at = (obj, keys) => keys.reduce((value, key) => value?.[key], obj);
 const shellQuote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+const resolvableRoots = paths => paths.flatMap(path => { try { return [canonical(path)]; } catch { return []; } });
 
 export function createService(options = {}) {
   const home = resolve(options.home || homedir()), env = options.env || process.env;
@@ -63,7 +64,7 @@ export function createService(options = {}) {
     // An unrelated missing/broken/restricted root must not prevent editing a
     // healthy resource. Unresolvable roots grant no access; never trust the
     // lexical path as a substitute for its canonical destination.
-    const roots = [dirs.claude, dirs.codex, dirs.cursor, dirs.shared, ...state.roots].flatMap(root => { try { return [canonical(root)]; } catch { return []; } });
+    const roots = resolvableRoots([dirs.claude, dirs.codex, dirs.cursor, dirs.shared, ...state.roots]);
     let claudeFile;
     try { claudeFile = join(canonical(dirname(dirs.claudeJson)), basename(dirs.claudeJson)); } catch { /* This source grants no access. */ }
     if (real !== claudeFile && !roots.some(root => inside(real, root))) fail('READ_ONLY', 'The file resolves outside selected provider and project folders.');
@@ -163,7 +164,7 @@ export function createService(options = {}) {
   }
   const saveState = (label, state, writes = [], moves = []) => store.commit(label, [...writes, store.stateWrite('state-v2.json', state)], moves);
   const transferContext = (state, snapshot) => ({ state, snapshot, find, writable, destination, store, saveState,
-    nativeRoots: Object.entries(providerPaths(home, env, state.preferences)).filter(([key]) => key !== 'claudeJson').map(([, path]) => canonical(path)) });
+    nativeRoots: resolvableRoots(Object.entries(providerPaths(home, env, state.preferences)).filter(([key]) => key !== 'claudeJson').map(([, path]) => path)) });
 
   function batchPlan(args, state) {
     if (!Array.isArray(args.sources) || !args.sources.length || args.sources.length > 200 || typeof args.enabled !== 'boolean') fail('INVALID', 'Select 1–200 MCP sources and an enabled state.');
