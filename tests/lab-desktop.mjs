@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
@@ -26,8 +26,14 @@ const out = join(repo, 'test-results'); fs.mkdirSync(out, { recursive: true });
 let originalOpen, originalSave;
 async function main() {
 try {
+  const nativeHandle = ipcMain.handle;
+  ipcMain.handle = (channel, handler) => nativeHandle.call(ipcMain, channel, channel === 'aios:request' ? async (...args) => {
+    if (args[1] === 'prompts.read') await new Promise(resolve => setTimeout(resolve, 1000));
+    return handler(...args);
+  } : handler);
   await import(pathToFileURL(join(fixture, 'electron/main.mjs')));
   for (let i = 0; i < 400; i++) { if (win && await js("document.querySelector('.wb-status')?.textContent.includes('Inventory refreshed')").catch(() => false)) break; await pause(); }
+  ipcMain.handle = nativeHandle;
   const inventory = await js("window.aios.request('inventory')"); assert.equal(inventory.providerPaths.claude, join(home, '.claude'));
   await runLabUat({ evaluate: js, home, output: out, screenshot: capture, probe });
   await probe('Native picker, real conversion, copy-free Save As and canceled picker', async () => {
@@ -47,7 +53,7 @@ try {
     const invalid = await js("window.aios.lab('files.register',{paths:['/etc/passwd']})"); assert.equal(invalid.ok, false);
     fs.writeFileSync(join(out, 'markdown-converter.png'), await capture());
   });
-  await runAIUat({ evaluate: js, home, output: out, screenshot: capture, probe });
+  await runAIUat({ evaluate: js, home, output: out, screenshot: capture, probe, delayedReads: true });
   await runExperienceUat({ evaluate: js, home, output: out, screenshot: capture, probe });
   await probe('New pages remain usable at a narrow size in light mode', async () => {
     win.setSize(800, 700); await js("document.documentElement.setAttribute('data-theme','light')"); await pause();

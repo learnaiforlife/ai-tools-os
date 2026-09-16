@@ -2,12 +2,12 @@ import * as fs from 'node:fs';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 
-export async function runAIUat({ evaluate: js, home, output, screenshot, probe }) {
+export async function runAIUat({ evaluate: js, home, output, screenshot, probe, delayedReads = false }) {
   const pause = () => new Promise(r => setTimeout(r, 40));
   const wait = async expression => { for (let i = 0; i < 600; i++) { if (await js(expression)) return; await pause(); } throw Error(`AI UAT timeout: ${expression}`); };
   const button = async name => { await js(`(()=>{const e=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(name)});if(!e||e.disabled)throw Error('Unavailable button: '+${JSON.stringify(name)});e.click()})()`); await pause(); };
   const nav = async name => { await js(`(()=>{const e=[...document.querySelectorAll('.wb-sidebar nav button')].find(e=>e.innerText.startsWith(${JSON.stringify(name)}));if(!e)throw Error('Missing page');e.click()})()`); await pause(); };
-  const value = async (selector, text) => { await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing field '+${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(text)});e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`); await pause(); };
+  const value = async (selector, text) => { await wait(`!!document.querySelector(${JSON.stringify(selector)}) && !document.querySelector(${JSON.stringify(selector)}).matches(':disabled')`); await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing field '+${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(text)});e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`); await pause(); };
   const field = async (label, text) => { const selector = await js(`(()=>{const e=[...document.querySelectorAll('dialog label.wb-field')].find(e=>e.querySelector('span')?.textContent===${JSON.stringify(label)})?.querySelector('input,select,textarea');if(!e)throw Error('Missing labeled field');e.setAttribute('data-ai-uat-field','current');return '[data-ai-uat-field="current"]'})()`); await value(selector, text); await js("document.querySelector('[data-ai-uat-field]')?.removeAttribute('data-ai-uat-field')"); };
   const create = async (page, kind, name, provider, local) => {
     await nav(page); await button(`New ${kind}`); await field('Name', name); if (provider) await field('Provider', provider);
@@ -62,7 +62,12 @@ export async function runAIUat({ evaluate: js, home, output, screenshot, probe }
     await nav('Overview'); await button('Sync'); await nav('Skill Lab'); await button('Advanced');
     await wait("[...document.querySelector('[aria-label=\"Evaluation resource\"]').options].some(o=>o.textContent.includes('Variable UAT'))");
     const id = await js("[...document.querySelector('[aria-label=\"Evaluation resource\"]').options].find(o=>o.textContent.includes('Variable UAT')).value");
-    await value('[aria-label="Evaluation resource"]', id); await value('[aria-label="Candidate instructions"]', 'Say CANDIDATE. Input: {{document}}.');
+    await value('[aria-label="Evaluation resource"]', id);
+    if (delayedReads) {
+      assert.equal(await js("document.querySelector('[aria-label=\"Candidate instructions\"]').matches(':disabled')"), true, 'A pending resource load must lock candidate editing');
+      assert.equal(await js("[...document.querySelectorAll('button')].find(b=>b.textContent==='Run comparison').matches(':disabled')"), true, 'A pending selection must not run the previously loaded source');
+    }
+    await wait(`document.querySelector('[aria-label="Evaluation resource"]').value===${JSON.stringify(id)} && !document.querySelector('[aria-label="Evaluation resource"]').disabled`); await value('[aria-label="Candidate instructions"]', 'Say CANDIDATE. Input: {{document}}.');
     const suite = { evals: [{ id: 'variables', prompt: 'Complete the supplied task', assertions: [{ type: 'equals', value: 'CANDIDATE' }] }] };
     await value('[aria-label="Test suite"]', JSON.stringify(suite)); await button('Run comparison');
     await wait("document.querySelector('main').innerText.includes('Supply a value for prompt variable')");

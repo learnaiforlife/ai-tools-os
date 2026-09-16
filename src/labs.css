@@ -14,3 +14,6 @@
 .lab-memory-files .wb-check { align-items:flex-start; }
 .lab-memory-files .wb-check span { min-width:0; }
 .wb-sidebar { overflow-y:auto; }
+
+.lab-instruction-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.lab-instruction-fields:disabled { opacity: .65; }
